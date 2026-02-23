@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --color-uv-bg: #0a0a0a;
+  --color-uv-panel: #141414;
+  --color-uv-border: #262626;
+  --color-uv-accent: #3b82f6;
+  --color-uv-accent-hover: #60a5fa;
+  --color-uv-text-primary: #ffffff;
+  --color-uv-text-secondary: #a3a3a3;
+  --color-uv-text-muted: #525252;
+  
+  --radius-uv: 0.5rem;
+}
+
+:root {
+  --bg: var(--color-uv-bg);
+  --panel: var(--color-uv-panel);
+  --border: var(--color-uv-border);
+  --accent: var(--color-uv-accent);
+  --text-primary: var(--color-uv-text-primary);
+  --text-secondary: var(--color-uv-text-secondary);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+.uv-panel {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-uv);
+}
+
+.uv-button-primary {
+  background-color: var(--accent);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-uv);
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.uv-button-primary:hover {
+  background-color: var(--color-uv-accent-hover);
+}
+
+.uv-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.uv-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.uv-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 10px;
+}
+
+.uv-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

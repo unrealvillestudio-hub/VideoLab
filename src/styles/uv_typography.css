@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+.font-uv-display {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.font-uv-body {
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+.font-uv-mono {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: -0.01em;
+}
+
+.text-uv-xs { font-size: 0.75rem; }
+.text-uv-sm { font-size: 0.875rem; }
+.text-uv-base { font-size: 1rem; }
+.text-uv-lg { font-size: 1.125rem; }
+.text-uv-xl { font-size: 1.25rem; }
