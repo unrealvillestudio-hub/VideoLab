@@ -2,8 +2,8 @@ import { PersonBlueprint } from '../core/types';
 
 export const PERSON_BLUEPRINTS: PersonBlueprint[] = [
   {
-    id: "po_patricia",
-    brandId: "PatriciaOsorio",
+    id: "po_patricia_personal",
+    brandId: "PatriciaOsorioPersonal",
     displayName: "Patricia Osorio",
     role_default: "BOTH",
     status: "active",
@@ -29,6 +29,180 @@ export const PERSON_BLUEPRINTS: PersonBlueprint[] = [
     expertise: "colorimetría, balayage, salud capilar, estilismo profesional Miami",
     compliance_notes: "No medical claims. No guaranteed results.",
     compatible_archetypes: ["studio_setup","car_front","car_rear","street_interview","salon_workshop","event_stage","single_talking_head"]
+  },
+  {
+    id: "po_patricia_salon",
+    brandId: "PatriciaOsorioVizosSalon",
+    displayName: "Patricia Osorio — Vizos Salón Miami",
+    role_default: "BOTH",
+    status: "active",
+    imagelab: {
+      description: "Mujer latina profesional, 35-45 años, cabello rubio/castaño impecablemente trabajado, estilo Miami premium. Presencia de autoridad cálida. Siempre imagen de estilista de alto nivel.",
+      style: "editorial_clean, Miami daylight, warm tones, beauty professional",
+      realism_level: "editorial_clean",
+      skin_detail: "realistic",
+      film_look: "digital_clean",
+      lens_preset: "50mm_lifestyle",
+      depth_of_field: "shallow",
+      has_reference_photos: false,
+      reference_photos_path: "Reference_Assets/Patricia_Osorio/"
+    },
+    voicelab: {
+      voice_id: "TBD_po_patricia",
+      language: "es-FL",
+      emotion_base: "energetic",
+      speed: 1.05,
+      script_style: "conversational",
+      speaking_style: "AUTHORITY_EDU — didáctico, directo, Spanglish natural. Explica el por qué antes del qué."
+    },
+    expertise: "colorimetría, balayage, salud capilar, estilismo profesional Miami",
+    compliance_notes: "No medical claims. No guaranteed results.",
+    compatible_archetypes: ["studio_setup","car_front","car_rear","street_interview","salon_workshop","event_stage","single_talking_head"]
+  },
+  {
+    id: "po_patricia_comunidad",
+    brandId: "PatriciaOsorioComunidad",
+    displayName: "Patricia Osorio — Conectando",
+    role_default: "BOTH",
+    status: "active",
+    imagelab: {
+      description: "Mujer latina profesional, 30-40 años, estilo business casual relajado, entorno de networking o coworking. Energía colaborativa y accesible.",
+      style: "lifestyle_candid, bright airy workspace, community vibe",
+      realism_level: "lifestyle",
+      skin_detail: "natural",
+      film_look: "digital_modern",
+      lens_preset: "35mm_lifestyle",
+      depth_of_field: "medium",
+      has_reference_photos: false,
+      reference_photos_path: "Reference_Assets/Patricia_Osorio_Comunidad/"
+    },
+    voicelab: {
+      voice_id: "TBD_po_comunidad",
+      language: "es-FL",
+      emotion_base: "friendly",
+      speed: 1.0,
+      script_style: "conversational",
+      speaking_style: "Cercano, motivador, enfocado en crecimiento y conexión."
+    },
+    expertise: "networking, crecimiento personal, emprendimiento",
+    compliance_notes: "Focus on community and support.",
+    compatible_archetypes: ["studio_setup","event_stage","street_interview","single_talking_head"]
+  },
+  {
+    id: "po_guest_generic",
+    brandId: "PatriciaOsorioPersonal",
+    displayName: "Guest — Invitado/a",
+    role_default: "GUEST",
+    status: "active",
+    imagelab: {
+      description: "Persona profesional 30-50 años, apariencia cuidada y neutra, ropa business casual elegante, presencia amigable y abierta.",
+      style: "editorial_clean, neutral professional, Miami daylight",
+      realism_level: "editorial_clean",
+      skin_detail: "realistic",
+      film_look: "digital_clean",
+      lens_preset: "50mm_lifestyle",
+      depth_of_field: "shallow",
+      has_reference_photos: false,
+      reference_photos_path: ""
+    },
+    voicelab: {
+      voice_id: "TBD_guest_generic",
+      language: "es-ES",
+      emotion_base: "warm",
+      speed: 1.0,
+      script_style: "conversational",
+      speaking_style: "Cercano y natural. Se adapta al tono del host."
+    },
+    expertise: "variable según episodio",
+    compliance_notes: "No specific claims.",
+    compatible_archetypes: ["studio_setup","street_interview","salon_workshop","event_stage","single_talking_head"]
+  },
+  {
+    id: "po_guest_salon",
+    brandId: "PatriciaOsorioVizosSalon",
+    displayName: "Guest — Invitado/a Salón",
+    role_default: "GUEST",
+    status: "active",
+    imagelab: {
+      description: "Persona profesional 30-50 años, apariencia cuidada y neutra, ropa business casual elegante, presencia amigable y abierta.",
+      style: "editorial_clean, neutral professional, Miami daylight",
+      realism_level: "editorial_clean",
+      skin_detail: "realistic",
+      film_look: "digital_clean",
+      lens_preset: "50mm_lifestyle",
+      depth_of_field: "shallow",
+      has_reference_photos: false,
+      reference_photos_path: ""
+    },
+    voicelab: {
+      voice_id: "TBD_guest_generic",
+      language: "es-ES",
+      emotion_base: "warm",
+      speed: 1.0,
+      script_style: "conversational",
+      speaking_style: "Cercano y natural. Se adapta al tono del host."
+    },
+    expertise: "variable según episodio",
+    compliance_notes: "No specific claims.",
+    compatible_archetypes: ["studio_setup","street_interview","salon_workshop","event_stage","single_talking_head"]
+  },
+  {
+    id: "po_guest_comunidad",
+    brandId: "PatriciaOsorioComunidad",
+    displayName: "Guest — Invitado/a Comunidad",
+    role_default: "GUEST",
+    status: "active",
+    imagelab: {
+      description: "Persona profesional 30-50 años, apariencia cuidada y neutra, ropa business casual elegante, presencia amigable y abierta.",
+      style: "editorial_clean, neutral professional, Miami daylight",
+      realism_level: "editorial_clean",
+      skin_detail: "realistic",
+      film_look: "digital_clean",
+      lens_preset: "50mm_lifestyle",
+      depth_of_field: "shallow",
+      has_reference_photos: false,
+      reference_photos_path: ""
+    },
+    voicelab: {
+      voice_id: "TBD_guest_generic",
+      language: "es-ES",
+      emotion_base: "warm",
+      speed: 1.0,
+      script_style: "conversational",
+      speaking_style: "Cercano y natural. Se adapta al tono del host."
+    },
+    expertise: "variable según episodio",
+    compliance_notes: "No specific claims.",
+    compatible_archetypes: ["studio_setup","event_stage","street_interview","single_talking_head"]
+  },
+  {
+    id: "vivose_host_01",
+    brandId: "VivoseMask",
+    displayName: "Host Vivosé Mask",
+    role_default: "BOTH",
+    status: "active",
+    imagelab: {
+      description: "Mujer profesional 30-45 años, imagen spa-luxury, cabello hidratado y brillante, estilo editorial limpio España.",
+      style: "editorial_clean, soft pink white tones, spa luxury, macro hair details",
+      realism_level: "editorial_clean",
+      skin_detail: "realistic",
+      film_look: "digital_clean",
+      lens_preset: "50mm_lifestyle",
+      depth_of_field: "shallow",
+      has_reference_photos: false,
+      reference_photos_path: "Reference_Assets/Vivose_Mask/"
+    },
+    voicelab: {
+      voice_id: "TBD_vivose_voice_01",
+      language: "es-ES",
+      emotion_base: "warm",
+      speed: 0.95,
+      script_style: "conversational",
+      speaking_style: "Sensorial y experto. Evoca hidratación y resultado inmediato."
+    },
+    expertise: "hidratación capilar, mascarilla intensiva, cabello dañado",
+    compliance_notes: "Cosmetic only. No medical claims.",
+    compatible_archetypes: ["studio_setup","street_interview","salon_workshop","single_talking_head"]
   },
   {
     id: "dd_host_01",
