@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# VideoLab — Unreal>ille Studio
 
-# Run and deploy your AI Studio app
+Generador de storyboards y guiones visuales del ecosistema Unreal>ille Studio.
 
-This contains everything you need to run your app locally.
+**Deploy:** Google AI Studio
+**Contexto completo del ecosistema:** [`CoreProject/CONTEXT.md`](https://github.com/unrealvillestudio-hub/CoreProject/blob/main/CONTEXT.md)
 
-View your app in AI Studio: https://ai.studio/apps/4eb2f162-3e00-468c-a5e2-8e429260000d
+---
 
-## Run Locally
+## Rol en el ecosistema
 
-**Prerequisites:**  Node.js
+VideoLab produce la capa narrativa visual: storyboards escena-a-escena, guiones con timing, y descripciones de shot para producción de video o Reels. Consume BPs para mantener consistencia de marca y persona.
 
+```
+BluePrints (BP_PERSON + BP_LOCATION) ──→ VideoLab (storyboard + guión)
+                                              ↓
+                                     Producción / CapCut / Reels
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+---
+
+## Stack
+
+- React 18 + TypeScript + Vite + Tailwind
+- AI: Gemini 2.0 Flash (Gemini API)
+- Deploy: Google AI Studio
+
+---
+
+## Dependencias
+
+| Consume | Provee |
+|---------|--------|
+| BP_PERSON | Storyboards con persona consistente |
+| BP_LOCATION | Locaciones referenciadas |
+| BP_PRODUCT | Videos de producto |
+
+---
+
+## Changelog
+
+| Fecha | Cambio |
+|---|---|
+| 2026-03-20 | README actualizado con arquitectura de ecosistema |
+
+---
+
+## Desarrollo local
+
+```bash
+npm install
+cp .env.example .env.local  # añade GEMINI_API_KEY
+npm run dev
+```
