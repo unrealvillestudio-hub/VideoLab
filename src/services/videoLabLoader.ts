@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * videoLabLoader.ts
  * Loads VideoLab data from Supabase with automatic fallback to hardcoded config.
