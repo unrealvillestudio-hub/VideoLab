@@ -3,6 +3,7 @@ import { Video, Layers, History, Settings, Play, Sparkles, LayoutGrid } from 'lu
 import { motion, AnimatePresence } from 'motion/react';
 import { BUILD_TAG } from './config/buildTag';
 import StoryboardModule from './modules/promptpack/StoryboardModule';
+import { VideoLabProvider } from './context/VideoLabContext';
 import { cn } from './ui/components';
 import './styles/uv_theme.css';
 import './styles/uv_typography.css';
@@ -71,32 +72,39 @@ export default function App() {
 
         {/* Workspace */}
         <div className="flex-1 overflow-hidden">
-          <AnimatePresence mode="wait">
-            {activeTab === 'storyboard' && (
-              <motion.div
-                key="storyboard"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className="h-full"
-              >
-                <StoryboardModule />
-              </motion.div>
-            )}
-            {activeTab !== 'storyboard' && (
-              <motion.div
-                key="placeholder"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="h-full flex items-center justify-center text-zinc-600"
-              >
-                <div className="text-center">
-                  <Sparkles size={48} className="mx-auto mb-4 opacity-20" />
-                  <p className="text-sm font-mono uppercase tracking-widest">Module Under Construction</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/*
+            VideoLabProvider wraps the entire workspace so any future tab
+            (library, history) can also access the loaded brand/person/location data
+            without triggering a second fetch.
+          */}
+          <VideoLabProvider>
+            <AnimatePresence mode="wait">
+              {activeTab === 'storyboard' && (
+                <motion.div
+                  key="storyboard"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -10 }}
+                  className="h-full"
+                >
+                  <StoryboardModule />
+                </motion.div>
+              )}
+              {activeTab !== 'storyboard' && (
+                <motion.div
+                  key="placeholder"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="h-full flex items-center justify-center text-zinc-600"
+                >
+                  <div className="text-center">
+                    <Sparkles size={48} className="mx-auto mb-4 opacity-20" />
+                    <p className="text-sm font-mono uppercase tracking-widest">Module Under Construction</p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </VideoLabProvider>
         </div>
       </main>
     </div>
