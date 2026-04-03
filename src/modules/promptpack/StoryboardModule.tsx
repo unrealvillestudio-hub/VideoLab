@@ -5,17 +5,16 @@ import {
   Type, Move, User, UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BRAND_PROFILES } from '../../config/brandProfiles';
 import { VIDEO_PACKS } from '../../config/packs';
 import { MOTION_PRESETS, RHYTHM_PRESETS } from '../../config/presets';
-import { PERSON_BLUEPRINTS, getBlueprintsByBrand } from '../../config/personBlueprints';
-import { LOCATION_BLUEPRINTS, getLocationsByBrand } from '../../config/locationBlueprints';
 import { buildVideoPackRequest, generateVideoFramePrompt } from '../../services/videoEngine';
+import { useVideoLab } from '../../context/VideoLabContext';
+import { VideoLabBrand, getPersonsByBrand, getLocationsByBrandId } from '../../services/videoLabLoader';
 import { useSessionOutputsStore } from '../../state/sessionOutputsStore';
 import { RunControlButton } from '../../ui/RunControlButton';
 import { Panel, Button, cn } from '../../ui/components';
 import { 
-  VideoPackSpec, StoryboardFrame, BrandProfile, MotionStyle, 
+  VideoPackSpec, StoryboardFrame, MotionStyle, 
   CutRhythm, ArchetypeId, StoryboardExport, PersonBlueprint, LocationBlueprint 
 } from '../../core/types';
 
@@ -32,8 +31,11 @@ const ARCHETYPES: { id: ArchetypeId; label: string }[] = [
 const MUSIC_MOODS = ["none", "calm", "energetic", "luxury", "dramatic"];
 
 export default function StoryboardModule() {
+  // --- SUPABASE DATA ---
+  const { brands, persons, locations, isLoading, source } = useVideoLab();
+
   // --- STATE ---
-  const [selectedBrand, setSelectedBrand] = useState<BrandProfile>(BRAND_PROFILES[0]);
+  const [selectedBrand, setSelectedBrand] = useState<VideoLabBrand | null>(null);
   const [selectedArchetype, setSelectedArchetype] = useState<ArchetypeId>("studio_setup");
   const [selectedPack, setSelectedPack] = useState<VideoPackSpec>(VIDEO_PACKS[0]);
   
@@ -45,29 +47,49 @@ export default function StoryboardModule() {
   const [globalMotion, setGlobalMotion] = useState<MotionStyle>("static");
   const [globalRhythm, setGlobalRhythm] = useState<CutRhythm>("medium");
   const [musicMood, setMusicMood] = useState("none");
-
   const [frames, setFrames] = useState<StoryboardFrame[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const addSessionOutput = useSessionOutputsStore(state => state.addSessionOutput);
 
-  // --- DERIVED DATA ---
-  const filteredPersonas = useMemo(() => {
-    // In a real app, we'd filter by brand, but for now we show all or filter if brandId matches
-    // The user request says "PersonBlueprints filtrados"
-    return PERSON_BLUEPRINTS.filter(p => p.brandId === selectedBrand.name || selectedBrand.name === "GENERIC");
-  }, [selectedBrand]);
+  // --- INIT: set first brand once data loads ---
+  useEffect(() => {
+    if (brands.length > 0 && !selectedBrand) {
+      setSelectedBrand(brands[0]);
+    }
+  }, [brands]);
 
+  // --- BRAND DEFAULTS: apply videolab params when brand changes ---
+  useEffect(() => {
+    if (!selectedBrand) return;
+    setGlobalMotion((selectedBrand.motionStyleDefault as MotionStyle) || 'static');
+    setGlobalRhythm((selectedBrand.cutRhythm as CutRhythm) || 'medium');
+    setMusicMood(selectedBrand.musicMood || 'none');
+    // Reset persona and location selections on brand change
+    setPersonaA({ id: "", role: "HOST" });
+    setPersonaB({ id: "", role: "GUEST" });
+    setSelectedLocation("");
+  }, [selectedBrand?.id]);
+
+  // --- DERIVED DATA ---
+  // FIX: filter by brand.id (canonical Supabase PK), not brand.name
+  const filteredPersonas = useMemo(() => {
+    if (!selectedBrand) return [];
+    return getPersonsByBrand(persons, selectedBrand.id);
+  }, [persons, selectedBrand?.id]);
+
+  // FIX: same — use brand.id
   const filteredLocations = useMemo(() => {
-    return getLocationsByBrand(selectedBrand.name);
-  }, [selectedBrand]);
+    if (!selectedBrand) return [];
+    return getLocationsByBrandId(locations, selectedBrand.id);
+  }, [locations, selectedBrand?.id]);
 
   const totalDuration = useMemo(() => {
     return frames.reduce((acc, f) => acc + (f.duration_seconds || 0), 0);
   }, [frames]);
 
-  // --- EFFECTS ---
+  // --- AUTO-SELECT PERSONA & LOCATION when filtered sets change ---
   useEffect(() => {
     if (filteredPersonas.length > 0 && !personaA.id) {
       setPersonaA(prev => ({ ...prev, id: filteredPersonas[0].id }));
@@ -84,6 +106,11 @@ export default function StoryboardModule() {
   }, [filteredLocations]);
 
   // --- HANDLERS ---
+  const handleBrandChange = (brandId: string) => {
+    const brand = brands.find(b => b.id === brandId);
+    if (brand) setSelectedBrand(brand);
+  };
+
   const generateAutoStructure = () => {
     const newFrames = selectedPack.frames.map(f => ({
       ...f,
@@ -115,13 +142,23 @@ export default function StoryboardModule() {
   };
 
   const handleGeneratePrompts = async () => {
+    if (!selectedBrand) return;
     setIsGenerating(true);
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const packRequest = buildVideoPackRequest({
-      ...selectedPack,
-      frames: frames
-    }, selectedBrand);
+    // Pass brand in the shape videoEngine expects
+    const brandForEngine = {
+      name: selectedBrand.name,
+      industry: selectedBrand.industry,
+      visualStyle: selectedBrand.visualStyle,
+      targetAudience: selectedBrand.targetAudience,
+      tone: selectedBrand.tone,
+    };
+
+    const packRequest = buildVideoPackRequest(
+      { ...selectedPack, frames },
+      brandForEngine as any
+    );
 
     const outputId = crypto.randomUUID();
     addSessionOutput({
@@ -133,16 +170,18 @@ export default function StoryboardModule() {
       request: packRequest,
       timestamp: Date.now()
     });
-
     setIsGenerating(false);
     alert("Prompts generated and saved to Session Output Tray.");
   };
 
   const exportJSON = () => {
+    if (!selectedBrand) return;
+
+    // FIX: use selectedBrand.id (canonical) not selectedBrand.name
     const exportData: StoryboardExport = {
       version: "VP_1.0",
       episode_id: `EP-${Date.now()}`,
-      brand_id: selectedBrand.name,
+      brand_id: selectedBrand.id,
       archetype: selectedArchetype,
       personas: {
         a: selectedArchetype !== "single_talking_head" ? personaA : undefined,
@@ -162,11 +201,24 @@ export default function StoryboardModule() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `storyboard_${selectedBrand.name.toLowerCase()}_${Date.now()}.json`;
+    a.download = `storyboard_${selectedBrand.id.toLowerCase()}_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  // --- LOADING STATE ---
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-3 opacity-40">
+          <Video size={36} strokeWidth={1} className="animate-pulse" />
+          <p className="text-xs font-mono uppercase tracking-widest">Loading studio data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER ---
   return (
     <div className="flex h-full overflow-hidden">
       {/* LEFT PANEL: CONFIGURATION (30%) */}
@@ -176,6 +228,17 @@ export default function StoryboardModule() {
             <Zap size={14} className="text-blue-500" />
             Studio Config
           </h2>
+          {/* Supabase source indicator */}
+          {source && (
+            <span className={cn(
+              "text-[9px] font-mono px-1.5 py-0.5 rounded",
+              source === 'supabase'
+                ? "bg-green-950 text-green-500 border border-green-900"
+                : "bg-yellow-950 text-yellow-600 border border-yellow-900"
+            )}>
+              {source === 'supabase' ? '● DB' : '● LOCAL'}
+            </span>
+          )}
         </div>
         
         <div className="flex-1 overflow-y-auto p-5 space-y-6 uv-scrollbar">
@@ -185,13 +248,13 @@ export default function StoryboardModule() {
               <label className="text-[10px] uppercase font-bold text-zinc-600 mb-1.5 block">Brand Profile</label>
               <select 
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 transition-colors"
-                value={selectedBrand.name}
-                onChange={(e) => setSelectedBrand(BRAND_PROFILES.find(b => b.name === e.target.value) || BRAND_PROFILES[0])}
+                // FIX: use brand.id as key, not brand.name
+                value={selectedBrand?.id || ''}
+                onChange={(e) => handleBrandChange(e.target.value)}
               >
-                {BRAND_PROFILES.map(b => <option key={b.name} value={b.name}>{b.name}</option>)}
+                {brands.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
-
             <div>
               <label className="text-[10px] uppercase font-bold text-zinc-600 mb-1.5 block">Archetype</label>
               <select 
@@ -202,7 +265,6 @@ export default function StoryboardModule() {
                 {ARCHETYPES.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
               </select>
             </div>
-
             <div>
               <label className="text-[10px] uppercase font-bold text-zinc-600 mb-1.5 block">Video Pack</label>
               <select 
@@ -221,46 +283,52 @@ export default function StoryboardModule() {
               <h3 className="text-[10px] uppercase font-bold text-zinc-500 flex items-center gap-2">
                 <Users size={12} /> Personas
               </h3>
-              
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-2">
-                  <label className="text-[9px] uppercase font-bold text-zinc-700">Persona A</label>
-                  <select 
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs outline-none"
-                    value={personaA.id}
-                    onChange={(e) => setPersonaA({ ...personaA, id: e.target.value })}
-                  >
-                    {filteredPersonas.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}
-                  </select>
-                  <select 
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-[10px] outline-none text-blue-500"
-                    value={personaA.role}
-                    onChange={(e) => setPersonaA({ ...personaA, role: e.target.value })}
-                  >
-                    <option value="HOST">HOST</option>
-                    <option value="GUEST">GUEST</option>
-                  </select>
+
+              {filteredPersonas.length === 0 ? (
+                <p className="text-[10px] text-zinc-700 italic">
+                  No persons configured for this brand in Supabase yet.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-2">
+                    <label className="text-[9px] uppercase font-bold text-zinc-700">Persona A</label>
+                    <select 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs outline-none"
+                      value={personaA.id}
+                      onChange={(e) => setPersonaA({ ...personaA, id: e.target.value })}
+                    >
+                      {filteredPersonas.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}
+                    </select>
+                    <select 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-[10px] outline-none text-blue-500"
+                      value={personaA.role}
+                      onChange={(e) => setPersonaA({ ...personaA, role: e.target.value })}
+                    >
+                      <option value="HOST">HOST</option>
+                      <option value="GUEST">GUEST</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] uppercase font-bold text-zinc-700">Persona B</label>
+                    <select 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs outline-none"
+                      value={personaB.id}
+                      onChange={(e) => setPersonaB({ ...personaB, id: e.target.value })}
+                    >
+                      <option value="">None</option>
+                      {filteredPersonas.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}
+                    </select>
+                    <select 
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-[10px] outline-none text-blue-500"
+                      value={personaB.role}
+                      onChange={(e) => setPersonaB({ ...personaB, role: e.target.value })}
+                    >
+                      <option value="HOST">HOST</option>
+                      <option value="GUEST">GUEST</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] uppercase font-bold text-zinc-700">Persona B</label>
-                  <select 
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs outline-none"
-                    value={personaB.id}
-                    onChange={(e) => setPersonaB({ ...personaB, id: e.target.value })}
-                  >
-                    <option value="">None</option>
-                    {filteredPersonas.map(p => <option key={p.id} value={p.id}>{p.displayName}</option>)}
-                  </select>
-                  <select 
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-[10px] outline-none text-blue-500"
-                    value={personaB.role}
-                    onChange={(e) => setPersonaB({ ...personaB, role: e.target.value })}
-                  >
-                    <option value="HOST">HOST</option>
-                    <option value="GUEST">GUEST</option>
-                  </select>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -270,15 +338,18 @@ export default function StoryboardModule() {
               <label className="text-[10px] uppercase font-bold text-zinc-600 mb-1.5 block flex items-center gap-2">
                 <MapPin size={12} /> Location
               </label>
-              <select 
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 transition-colors"
-                value={selectedLocation}
-                onChange={(e) => setSelectedLocation(e.target.value)}
-              >
-                {filteredLocations.map(l => <option key={l.id} value={l.id}>{l.displayName}</option>)}
-              </select>
+              {filteredLocations.length === 0 ? (
+                <p className="text-[10px] text-zinc-700 italic">No locations for this brand yet.</p>
+              ) : (
+                <select 
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm outline-none focus:border-blue-500 transition-colors"
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                >
+                  {filteredLocations.map(l => <option key={l.id} value={l.id}>{l.displayName}</option>)}
+                </select>
+              )}
             </div>
-
             <div>
               <label className="text-[10px] uppercase font-bold text-zinc-600 mb-1.5 block">Episode Brief</label>
               <textarea 
@@ -293,7 +364,6 @@ export default function StoryboardModule() {
           {/* Controls */}
           <div className="space-y-4 pt-4 border-t border-zinc-800/50">
             <h3 className="text-[10px] uppercase font-bold text-zinc-500">Video Params</h3>
-            
             <div className="grid grid-cols-1 gap-3">
               <div>
                 <label className="text-[9px] uppercase font-bold text-zinc-700 mb-1 block">Motion Style</label>
@@ -305,7 +375,6 @@ export default function StoryboardModule() {
                   {MOTION_PRESETS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
-              
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[9px] uppercase font-bold text-zinc-700 mb-1 block">Rhythm</label>
@@ -347,7 +416,6 @@ export default function StoryboardModule() {
               <span className="text-[10px] font-mono text-zinc-400">{totalDuration}s / {selectedPack.duration_seconds}s</span>
             </div>
           </div>
-          
           <div className="flex items-center gap-2">
             <Button 
               variant="secondary" 
@@ -414,7 +482,7 @@ export default function StoryboardModule() {
                       <td className="py-4 px-4">
                         <select 
                           className="w-full bg-transparent border-none outline-none text-xs text-zinc-500"
-                          value={frame.label} // Using label as speaker for now in this simple table
+                          value={frame.label}
                           onChange={(e) => updateFrame(idx, { label: e.target.value })}
                         >
                           <option value="HOST">HOST</option>
@@ -485,7 +553,6 @@ export default function StoryboardModule() {
               <span className="text-sm font-mono text-zinc-400">{selectedPack.format.toUpperCase()}</span>
             </div>
           </div>
-
           <div className="flex items-center gap-3">
             <Button 
               variant="secondary" 
