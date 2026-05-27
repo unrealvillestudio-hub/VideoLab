@@ -12,8 +12,10 @@ import crypto from 'node:crypto';
 
 declare const process: { env: Record<string, string | undefined> };
 
-const KLING_ACCESS_KEY = () => process.env.KLING_ACCESS_KEY ?? process.env.VITE_KLING_ACCESS_KEY ?? '';
-const KLING_SECRET_KEY = () => process.env.KLING_SECRET_KEY ?? process.env.VITE_KLING_SECRET_KEY ?? '';
+// NOTE: do NOT add a VITE_* fallback here. Kling credentials must stay server-side;
+// any var prefixed with VITE_ is opt-in to be exposed in the client bundle by Vite.
+const KLING_ACCESS_KEY = () => process.env.KLING_ACCESS_KEY ?? '';
+const KLING_SECRET_KEY = () => process.env.KLING_SECRET_KEY ?? '';
 const KLING_BASE_URL   = () => process.env.KLING_BASE_URL ?? 'https://api-singapore.klingai.com';
 const KLING_MODEL      = () => process.env.KLING_MODEL ?? 'kling-v1';
 
