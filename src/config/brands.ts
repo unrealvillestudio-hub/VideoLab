@@ -1,6 +1,20 @@
-import { BrandProfile } from "../core/types";
+/**
+ * Hardcoded brand fallback list — used by videoLabLoader.hardcodedBrandsToVideoLab()
+ * when Supabase is unavailable. Shape is legacy from ImageLab and intentionally
+ * different from BrandProfile in core/types.ts (which is what videoEngine.ts
+ * consumes for prompt generation). The adapter maps between them.
+ */
+export interface HardcodedBrand {
+  id: string;
+  displayName: string;
+  industry: string;
+  requiresProductLock: boolean;
+  visualIdentity: string;
+  complianceRules: string;
+  defaultNegativePrompt: string;
+}
 
-export const BRANDS: BrandProfile[] = [
+export const BRANDS: HardcodedBrand[] = [
   {
     id: "new",
     displayName: "--- NEW (Clear Context) ---",
@@ -82,6 +96,6 @@ export const BRANDS: BrandProfile[] = [
   }
 ];
 
-export function getBrandById(id: string): BrandProfile | undefined {
+export function getBrandById(id: string): HardcodedBrand | undefined {
   return BRANDS.find(b => b.id === id);
 }
