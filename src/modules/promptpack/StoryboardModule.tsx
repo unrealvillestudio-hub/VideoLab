@@ -52,6 +52,7 @@ export default function StoryboardModule() {
   const [copied, setCopied] = useState(false);
 
   const addSessionOutput = useSessionOutputsStore(state => state.addSessionOutput);
+  const updateSessionOutput = useSessionOutputsStore(state => state.updateSessionOutput);
 
   // --- INIT: set first brand once data loads ---
   useEffect(() => {
@@ -144,9 +145,7 @@ export default function StoryboardModule() {
   const handleGeneratePrompts = async () => {
     if (!selectedBrand) return;
     setIsGenerating(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Pass brand in the shape videoEngine expects
     const brandForEngine = {
       name: selectedBrand.name,
       industry: selectedBrand.industry,
@@ -163,15 +162,72 @@ export default function StoryboardModule() {
     const outputId = crypto.randomUUID();
     addSessionOutput({
       id: outputId,
-      status: 'completed',
-      progress: 100,
+      status: 'processing',
+      progress: 5,
       brand: selectedBrand.name,
       pack: selectedPack.label,
       request: packRequest,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
-    setIsGenerating(false);
-    alert("Prompts generated and saved to Session Output Tray.");
+
+    // The /api/execute submit path uses frames[0].prompt today; multi-frame
+    // stitching lives on Kling's side and is a follow-up. Bound client-side
+    // polling so a stuck job can't keep the spinner alive forever.
+    const MAX_CLIENT_POLLS = 30;
+    const POLL_INTERVAL_MS = 10_000;
+
+    try {
+      const submitRes = await fetch('/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(packRequest),
+      });
+      if (!submitRes.ok) {
+        const text = await submitRes.text().catch(() => '');
+        throw new Error(`POST /api/execute -> ${submitRes.status}: ${text.slice(0, 300)}`);
+      }
+      let payload: any = await submitRes.json();
+
+      let polls = 0;
+      while (payload?.status === 'pending' && payload?.task_id && polls < MAX_CLIENT_POLLS) {
+        polls += 1;
+        updateSessionOutput(outputId, { status: 'processing', progress: 50 });
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        const pollRes = await fetch('/api/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'poll', taskId: payload.task_id }),
+        });
+        if (!pollRes.ok) {
+          const text = await pollRes.text().catch(() => '');
+          throw new Error(`POST /api/execute (poll) -> ${pollRes.status}: ${text.slice(0, 300)}`);
+        }
+        payload = await pollRes.json();
+      }
+
+      if (payload?.status === 'ok' && payload?.video_url) {
+        updateSessionOutput(outputId, {
+          status: 'completed',
+          progress: 100,
+          result: {
+            id: outputId,
+            kind: 'video',
+            url: payload.video_url,
+            prompt: packRequest.frames?.[0]?.prompt ?? '',
+            timestamp: Date.now(),
+          },
+        });
+      } else if (payload?.status === 'pending') {
+        throw new Error(`Kling job ${payload.task_id} still pending after ${MAX_CLIENT_POLLS} client polls. Retry later with the task_id.`);
+      } else {
+        throw new Error(payload?.error ?? payload?.task_status ?? `Unexpected response: ${JSON.stringify(payload).slice(0, 300)}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      updateSessionOutput(outputId, { status: 'failed', progress: 0, error: msg });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const exportJSON = () => {
