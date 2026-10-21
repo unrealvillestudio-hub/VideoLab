@@ -40,7 +40,7 @@ Cárgalo con `Vercel:web_fetch_vercel_url` o `curl` y síguelo en su totalidad.
    > Web UI** desde el 2026-07-29, **no por GitHub Desktop**. Este `CLAUDE.md` nunca se sincronizó, y
    > leer «nunca por CC» como imperativo vigente **traba a CC** — ya ocurrió en sesión. Fuente de verdad:
    > `CC_PROTOCOL.md` §1 + «Flujo de entrega de context files». Los `CLAUDE.md` de cada repo **sólo
-   > apuntan** al protocolo; cuando duplican una regla, divergen — que es exactamente lo que pasó acá.
+   > apuntan** al protocolo; cuando duplican una regla, divergen — que es exactamente lo que pasó aquí.
 
 3. **VERIFICAR ANTES DE ACTUAR:** mensaje corto a Sam con objetivo, pasos, archivos y repos afectados antes de cualquier escritura/commit/deploy. Reportar al final con el formato de CC_PROTOCOL (incluida la sección PRESERVACIÓN DE CONTEXTO).
 
