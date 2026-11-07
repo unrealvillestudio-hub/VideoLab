@@ -1,12 +1,13 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "date": "2026-11-07",
   "lab": "videolab",
   "transport": {
     "endpoint_source": "public.lab_configs.api_endpoint + execute_path (fila lab_key='videolab')",
     "method": "POST",
     "accepted_status": 202,
+    "initial_status": "running",
     "job_table": "public.lab_jobs",
     "job_lab": "videolab",
     "job_type": "videolab",
