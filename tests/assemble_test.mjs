@@ -118,7 +118,8 @@ caso('subtítulos: las etiquetas de interpretación de la voz no salen en pantal
     .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));
   assert.deepEqual(A.spokenWords(words).map((w) => w.text), ['The', 'ritual.', 'And']);
   const ass = A.buildAss({ words, canvas: CANVAS, style: { font_family: 'x', color: '#FFFFFF', outline_color: '#000000' } });
-  assert.doesNotMatch(ass, /\[|\]|leaning/);
+  const dialogos = ass.split('\n').filter((l) => l.startsWith('Dialogue:')).join('\n');
+  assert.doesNotMatch(dialogos, /\[|\]|leaning/);
   assert.match(ass, /Dialogue: 0,0:00:00.04,0:00:00.70,Sub,,0,0,0,,The ritual\. And/);
 });
 
