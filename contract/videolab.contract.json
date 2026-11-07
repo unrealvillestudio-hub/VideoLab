@@ -8,6 +8,7 @@
     "method": "POST",
     "accepted_status": 202,
     "initial_status": "running",
+    "max_run_ms": 900000,
     "job_table": "public.lab_jobs",
     "job_lab": "videolab",
     "job_type": "videolab",
@@ -111,6 +112,7 @@
     "VIDEOLAB_CANVAS_MISMATCH",
     "VIDEOLAB_PROVIDER_FAILED",
     "VIDEOLAB_SPEND_CAP",
-    "VIDEOLAB_OUTPUT_INVALID"
+    "VIDEOLAB_OUTPUT_INVALID",
+    "VIDEOLAB_TIMEOUT"
   ]
 }

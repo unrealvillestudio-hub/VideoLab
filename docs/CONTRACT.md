@@ -21,7 +21,10 @@ los respaldos no se implementan hasta que hagan falta; UGC y formatos de product
 3. El render corre en un Cloud Run Job del proyecto de GCP del ecosistema.
 4. El carril sondea `lab_jobs` por `id` o por `parent_job_id`. Estados: `running → completed | failed`
    (`queued` queda reservado; hoy ninguna fila de VideoLab pasa por él).
-5. **Entrega por sondeo.** Un `callback_url` queda para una segunda fase, si hace falta.
+5. **Tope de una ejecución: `max_run_ms` = 900 000 (15 min).** El job se cierra en `failed` con `VIDEOLAB_TIMEOUT`
+   un minuto antes del tope. Una fila que siga en `running` pasado `created_at + max_run_ms` está muerta (la tarea
+   cayó sin escribir): el carril deja de sondearla y la trata como `VIDEOLAB_TIMEOUT`.
+6. **Entrega por sondeo.** Un `callback_url` queda para una segunda fase, si hace falta.
 
 Un pedido inválido no crea job: responde `4xx { status:'error', error_label, error }`.
 
@@ -149,6 +152,7 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 | `VIDEOLAB_PROVIDER_FAILED` | el proveedor falló o no respondió a tiempo |
 | `VIDEOLAB_SPEND_CAP` | se alcanzó el tope mensual del productor |
 | `VIDEOLAB_OUTPUT_INVALID` | el MP4 no cumple la especificación de §5 |
+| `VIDEOLAB_TIMEOUT` | el render superó el tope de una ejecución (§1, `max_run_ms`) |
 
 ## 8. Fuera de este contrato
 

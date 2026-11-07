@@ -263,10 +263,25 @@ export async function renderJob(jobId, env = process.env) {
   }
 }
 
+// Tope de una ejecución (contrato §1): el Cloud Run Job se despliega con --task-timeout igual a MAX_RUN_MS.
+// Un minuto antes, el vigía cierra el job en `failed` con VIDEOLAB_TIMEOUT, para que ninguna fila quede en
+// `running` cuando Cloud Run mate la tarea. Si la tarea muere por otra causa (memoria), el carril aplica el
+// mismo tope desde `created_at`.
+export const MAX_RUN_MS = 900_000;
+export const WATCHDOG_MS = MAX_RUN_MS - 60_000;
+
 // Punto de entrada del Cloud Run Job.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const jobId = process.env.JOB_ID;
   if (!jobId) { console.error('JOB_ID no configurado'); process.exit(2); }
+  setTimeout(async () => {
+    await S.patch(S.config(), 'lab_jobs', `id=eq.${enc(jobId)}&status=eq.running`, {
+      status: 'failed', error_msg: `VIDEOLAB_TIMEOUT: el render superó ${WATCHDOG_MS / 1000} s`,
+      output_parsed: { error_label: 'VIDEOLAB_TIMEOUT' }, completed_at: new Date().toISOString(),
+    }).catch(() => {});
+    console.error(JSON.stringify({ job: jobId, status: 'failed', error: 'VIDEOLAB_TIMEOUT' }));
+    process.exit(1);
+  }, WATCHDOG_MS).unref();
   renderJob(jobId)
     .then((o) => { console.log(JSON.stringify({ job: jobId, status: 'completed', url: o.video.url, cost_usd: o.cost_usd })); })
     .catch((e) => { console.error(JSON.stringify({ job: jobId, status: 'failed', error: String(e?.message ?? e) })); process.exit(1); });

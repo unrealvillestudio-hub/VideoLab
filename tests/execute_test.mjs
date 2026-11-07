@@ -115,6 +115,16 @@ await caso('regla rota a propósito: si Cloud Run rechaza, la fila queda en fail
   assert.equal(JSON.parse(parche.init.body).status, 'failed');
 });
 
+await caso('un solo tope: contrato max_run_ms = MAX_RUN_MS del job = --task-timeout del despliegue; el vigía llega antes', async () => {
+  const { MAX_RUN_MS, WATCHDOG_MS } = await import('../render/src/main.mjs');
+  const contrato = JSON.parse(readFileSync(join(RAIZ, 'contract/videolab.contract.json'), 'utf8'));
+  const deploy = readFileSync(join(RAIZ, 'docs/DEPLOY_RENDER.md'), 'utf8');
+  assert.equal(contrato.transport.max_run_ms, MAX_RUN_MS);
+  assert.equal(Number(deploy.match(/--task-timeout (\d+)/)[1]) * 1000, MAX_RUN_MS);
+  assert.ok(WATCHDOG_MS < MAX_RUN_MS);
+  assert.ok(contrato.error_labels.includes('VIDEOLAB_TIMEOUT'));
+});
+
 await caso('marca N+1: la entrada no nombra ninguna marca ni persona', () => {
   const INSTANCIAS = ['NeuroneSCF', 'ForumPHs', 'UnrealvilleStudio', 'LucienSael', 'D7Herbal', 'Patricia', 'Irja', 'Ivette', 'Lucien', 'NSCF', 'FPHS', 'D7H'];
   for (const f of ['api/execute.js', 'api/_lib/execute_core.mjs']) {
