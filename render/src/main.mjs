@@ -11,12 +11,17 @@ import { mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
-import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, RenderError, SPEC } from './plan.mjs';
+import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
+import { planAssemble, buildAss, clipsNeeded } from './assemble.mjs';
+import { veoClip } from './providers/veo.mjs';
+import { heygenClip } from './providers/heygen.mjs';
+import { brandFont } from './fonts.mjs';
 
 const run = promisify(execFile);
 const LAB = 'videolab';
-const PRODUCER = 'render';
+const PRODUCERS = ['render', 'generative', 'avatar'];
 const RATE_MODEL = 'videolab-render-cloud-run';
+const SUBTITLE_DEFAULT = Object.freeze({ color: '#FFFFFF', outline_color: '#000000', role: 'body' });
 
 const enc = encodeURIComponent;
 
@@ -28,6 +33,22 @@ async function ffprobe(path) {
 async function audioMs(path) {
   const p = await ffprobe(path);
   return Math.round(Number(p.format?.duration ?? 0) * 1000);
+}
+
+/**
+ * Tope mensual del productor (videolab_producers.monthly_cap_usd, dato): lo gastado este mes en su modelo más lo
+ * que costará esta llamada no puede pasarlo. Se comprueba ANTES de llamar al proveedor.
+ */
+async function capCheck(cfg, prod, model, rate, seconds) {
+  if (prod.monthly_cap_usd == null) return;
+  const desde = new Date(); desde.setUTCDate(1); desde.setUTCHours(0, 0, 0, 0);
+  const rows = await S.select(cfg, `ops_generation_ledger?lab=eq.${LAB}&model_id=eq.${enc(model.model_id)}` +
+    `&generated_at=gte.${enc(desde.toISOString())}&select=cost_usd`);
+  const gastado = rows.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
+  const estimado = seconds * Number(rate.rate_usd);
+  if (gastado + estimado > Number(prod.monthly_cap_usd)) {
+    throw new RenderError('VIDEOLAB_SPEND_CAP', `${prod.producer}: gastado ${gastado.toFixed(2)} + ${estimado.toFixed(2)} > tope ${prod.monthly_cap_usd}`);
+  }
 }
 
 export async function renderJob(jobId, env = process.env) {
@@ -54,9 +75,25 @@ export async function renderJob(jobId, env = process.env) {
       `&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=*`);
     const preset = resolvePreset(rows, brandId, params.video_style);
     const producer = params.producer ?? preset.producer;
-    if (producer !== PRODUCER) throw new RenderError('VIDEOLAB_PRODUCER_NOT_ACTIVE', `este job fabrica ${PRODUCER}, se pidió ${producer}`);
-    const [prod] = await S.select(cfg, `videolab_producers?producer=eq.${PRODUCER}&select=*`);
-    if (!prod?.active) throw new RenderError('VIDEOLAB_PRODUCER_NOT_ACTIVE', `el productor ${PRODUCER} no está activo`);
+    if (!PRODUCERS.includes(producer)) throw new RenderError('VIDEOLAB_PRODUCER_NOT_ACTIVE', `productor desconocido: ${producer}`);
+    const [prod] = await S.select(cfg, `videolab_producers?producer=eq.${producer}&select=*`);
+    if (!prod?.active) throw new RenderError('VIDEOLAB_PRODUCER_NOT_ACTIVE', `el productor ${producer} no está activo`);
+    // El modelo de los productores externos sale del registro único (ops_lab_models, role = productor).
+    let model = null;
+    let modelRate = null;
+    if (producer !== 'render') {
+      [model] = await S.select(cfg, `ops_lab_models?lab=eq.${LAB}&role=eq.${producer}&active=eq.true&select=provider,model_id,location`);
+      if (!model) throw new RenderError('VIDEOLAB_PRODUCER_NOT_ACTIVE', `ops_lab_models no tiene modelo activo para ${producer}`);
+      modelRate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: model.model_id, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
+      if (!modelRate?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${model.model_id}`);
+    }
+    // Consentimiento: una persona real (person_blueprint_id) necesita el ámbito 'avatar' vigente. Sin persona del
+    // registro, la persona es sintética y no se exige.
+    const personId = params.person_blueprint_id ?? null;
+    if (producer === 'avatar' && personId) {
+      const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(personId)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
+      if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${personId} no tiene consentimiento vigente de avatar`);
+    }
     const [profile] = await S.select(cfg, `platform_format_profiles?platform=eq.${enc(params.platform)}&format=eq.reel&active=eq.true&select=*`, 'intel');
     const canvas = resolveCanvas(params.canvas ?? null, profile);
     const rate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: RATE_MODEL, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
@@ -117,10 +154,57 @@ export async function renderJob(jobId, env = process.env) {
       layerMeta = { compositor_version: out.compositor_version, text_rect: out.text_rect ?? null, markers: out.markers ?? [] };
     }
 
-    // Render.
+    // Fabricación, según el productor.
     const outPath = join(work, 'out.mp4');
-    const { args, durationS } = planRender({ preset, canvas, inputs: { images: imagePaths, layer, voice, music, out: outPath } });
-    await run('ffmpeg', ['-loglevel', 'error', ...args], { maxBuffer: 1 << 26 });
+    let durationS;
+    const providerRows = [];
+    if (producer === 'render') {
+      const plan = planRender({ preset, canvas, inputs: { images: imagePaths, layer, voice, music, out: outPath } });
+      durationS = plan.durationS;
+      await run('ffmpeg', ['-loglevel', 'error', ...plan.args], { maxBuffer: 1 << 26 });
+    } else {
+      let clips = [];
+      let clipHasVoice = false;
+      let providerSeconds = 0;
+      let ass = null;
+      let fontsDir = null;
+      if (producer === 'generative') {
+        durationS = renderDurationS({ preset, voiceMs: voice?.ms ?? null });
+        const n = clipsNeeded(durationS, 8);
+        await capCheck(cfg, prod, model, modelRate, n * 8);
+        const imageB64 = readFileSync(frame0).toString('base64');
+        for (let i = 0; i < n; i++) {
+          const p = join(work, `clip${i}.mp4`);
+          writeFileSync(p, await veoClip({ model: model.model_id, location: model.location || 'us-central1', prompt: prev.video_prompt,
+            imageB64, durationS: 8, seed: i + 1 }));
+          clips.push(p);
+          providerSeconds += 8;
+        }
+      } else {
+        if (!voice) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab');
+        durationS = renderDurationS({ preset, voiceMs: voice.ms });
+        await capCheck(cfg, prod, model, modelRate, durationS);
+        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}` });
+        const p = join(work, 'clip0.mp4');
+        writeFileSync(p, hg.bytes);
+        clips = [p];
+        clipHasVoice = true;
+        providerSeconds = Math.round(Number((await ffprobe(p)).format?.duration ?? durationS) * 10) / 10;
+        if ((preset.text_treatment ?? {}).subtitles) {
+          const tt = preset.text_treatment;
+          const role = tt.subtitle_role ?? SUBTITLE_DEFAULT.role;
+          const [typo] = await S.select(cfg, `brand_typography?brand_id=eq.${enc(brandId)}&role=eq.${enc(role)}&select=font_family,css_import`);
+          fontsDir = await brandFont({ cssImport: typo?.css_import, family: typo?.font_family, dir: join(work, 'fonts') });
+          ass = join(work, 'subs.ass');
+          writeFileSync(ass, buildAss({ words: prev.voice.alignment?.words, canvas, style: { font_family: typo.font_family,
+            color: tt.subtitle_color ?? SUBTITLE_DEFAULT.color, outline_color: tt.subtitle_outline_color ?? SUBTITLE_DEFAULT.outline_color,
+            size_pct: tt.subtitle_size_pct, margin_bottom_pct: tt.subtitle_margin_bottom_pct, max_words: tt.subtitle_max_words } }));
+        }
+      }
+      providerRows.push({ model, rate: modelRate, seconds: providerSeconds });
+      const plan = planAssemble({ preset, canvas, durationS, inputs: { clips, clipHasVoice, layer, ass, fontsDir, voice, music, out: outPath } });
+      await run('ffmpeg', ['-loglevel', 'error', ...plan.args], { maxBuffer: 1 << 26 });
+    }
     const bytes = statSync(outPath).size;
     const probe = await ffprobe(outPath);
     const fallas = validateOutput(probe, canvas, bytes);
@@ -144,14 +228,28 @@ export async function renderJob(jobId, env = process.env) {
       p_rate_source: `ops_lab_rates:${rate.rate_id}`, p_rate_effective_at: rate.effective_from,
       p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
     });
+    const ledgerIds = [ledgerId];
+    let totalCost = cost;
+    for (const r of providerRows) {
+      const c = Math.round(r.seconds * Number(r.rate.rate_usd) * 1e6) / 1e6;
+      totalCost += c;
+      ledgerIds.push(await S.rpc(cfg, 'ops_log_generation', {
+        p_lab: LAB, p_brand_id: brandId, p_job_id: jobId, p_piece_id: pieceId, p_output_type: `video_${producer}`,
+        p_platform: params.platform, p_provider: r.model.provider, p_model_id: r.model.model_id, p_unit_type: 'per_second',
+        p_input_units: r.seconds, p_output_units: durationS, p_cost_usd: c, p_status: 'success',
+        p_rate_in: r.rate.rate_usd, p_rate_source: `ops_lab_rates:${r.rate.rate_id}`, p_rate_effective_at: r.rate.effective_from,
+        p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
+      }));
+    }
 
     const v = probe.streams.find((s) => s.codec_type === 'video');
     const output = {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
-      video_style: params.video_style, producer: PRODUCER, provider: 'unrlvl', model_id: RATE_MODEL,
-      preset_source: preset.source, synthetic_person: false, text_layer: layerMeta, unplaced_text: txt.unplaced,
-      cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
+      video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
+      preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
+      text_layer: layerMeta, unplaced_text: txt.unplaced,
+      cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };
     await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });
     return output;
