@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "node tests/sin_voseo_test.mjs"
+    "test": "node tests/sin_voseo_test.mjs && node tests/contrato_test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

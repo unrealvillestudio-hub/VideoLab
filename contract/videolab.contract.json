@@ -1,0 +1,58 @@
+{
+  "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
+  "version": "1.0.0",
+  "date": "2026-11-07",
+  "lab": "videolab",
+  "transport": {
+    "endpoint_source": "public.lab_configs.api_endpoint + execute_path (fila lab_key='videolab')",
+    "method": "POST",
+    "accepted_status": 202,
+    "job_table": "public.lab_jobs",
+    "job_lab": "videolab",
+    "job_type": "videolab",
+    "job_statuses": ["queued", "running", "completed", "failed"],
+    "delivery": "polling"
+  },
+  "request": {
+    "required": ["brandId", "pieceId", "parentJobId", "params", "previousOutputs"],
+    "params": {
+      "required": ["platform", "format", "video_style"],
+      "optional": ["producer", "person_blueprint_id", "duration_target_ms", "canvas"]
+    },
+    "previousOutputs": {
+      "required": ["voice_script", "on_screen_text"],
+      "optional": ["image", "images", "voice", "music"]
+    }
+  },
+  "format": "reel",
+  "video_styles": ["product_showcase", "product_demo", "before_after", "unboxing", "ugc"],
+  "producers": ["render", "generative", "avatar"],
+  "on_screen_text_roles": ["headline", "subheadline", "cta"],
+  "consent_scopes": ["voice", "image", "avatar"],
+  "output": {
+    "field": "lab_jobs.output_parsed.video",
+    "required": ["url", "storage_path", "poster_url", "width", "height", "fps", "duration_ms", "codec", "audio"],
+    "spec": {
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "video_codec": "h264",
+      "pixel_format": "yuv420p",
+      "audio_codec": "aac",
+      "audio_sample_rate_hz": 48000,
+      "max_duration_ms": 60000,
+      "max_bytes": 52428800
+    }
+  },
+  "error_labels": [
+    "VIDEOLAB_BAD_REQUEST",
+    "VIDEOLAB_STYLE_NOT_DECLARED",
+    "VIDEOLAB_PRODUCER_NOT_ACTIVE",
+    "VIDEOLAB_CONSENT_MISSING",
+    "VIDEOLAB_TEXT_DOES_NOT_FIT",
+    "VIDEOLAB_CANVAS_MISMATCH",
+    "VIDEOLAB_PROVIDER_FAILED",
+    "VIDEOLAB_SPEND_CAP",
+    "VIDEOLAB_OUTPUT_INVALID"
+  ]
+}
