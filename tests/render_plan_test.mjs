@@ -111,6 +111,12 @@ caso('marca N+1: el código del render no nombra ninguna marca ni persona', () =
   }
 });
 
+caso('el libro se escribe por ops_log_generation, nunca con INSERT directo (service_role no lo tiene)', () => {
+  const main = readFileSync(join(RAIZ, 'render/src/main.mjs'), 'utf8');
+  assert.match(main, /S\.rpc\(cfg, 'ops_log_generation'/);
+  assert.doesNotMatch(main, /S\.insert\(cfg, 'ops_generation_ledger'/);
+});
+
 caso('regla rota a propósito: si la fila del sistema mandara sobre la de la marca, el primer caso lo ve', () => {
   const roto = (rows, b, st) => ({ ...rows.find((r) => r.brand_id == null && r.video_style === st), source: 'system' });
   assert.notEqual(roto([DEF, MARCA], 'marca_sintetica_a', 'product_showcase').motion.zoom_to, 1.2);
