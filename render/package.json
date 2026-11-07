@@ -1,0 +1,8 @@
+{
+  "name": "videolab-render",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Render propio de VideoLab (ffmpeg en Cloud Run Job). Sin dependencias: fetch y child_process de Node 22.",
+  "engines": { "node": ">=22" }
+}

@@ -28,7 +28,7 @@ import assert from "node:assert/strict";
 import { formasVoseantes } from "./idioma_voseo.mjs";
 
 const RAIZ = fileURLToPath(new URL("..", import.meta.url));
-const CARPETAS = ["api", "src", "legacy", "contract"].filter((c) => existsSync(join(RAIZ, c)));
+const CARPETAS = ["api", "src", "legacy", "contract", "render"].filter((c) => existsSync(join(RAIZ, c)));
 const MINIMO = 36;
 const CITAS = [
   { archivo: "src/config/brands.ts", forma: "Vivos\u00e9", motivo: "nombre propio de un producto; no es una forma verbal" },

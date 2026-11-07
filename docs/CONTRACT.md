@@ -95,9 +95,16 @@ En `completed`, `lab_jobs.output_parsed`:
 {
   video: { url, storage_path, poster_url, width, height, fps, duration_ms, codec, audio },
   video_style, producer, provider, model_id, synthetic_person: boolean,
+  preset_source: 'brand' | 'system',          // de qué fila salió el preset
+  text_layer: { compositor_version, text_rect, markers } | null,   // eco de ImageLab
+  unplaced_text: [{ order, role }],           // tramos sin ranura en el compositor (p. ej. un cta): no se inventan
   cost_usd, ledger_ids: [...]
 }
 ```
+
+**Render propio (F4, 2026-11-07):** fabrica `product_showcase` y `before_after`. El titular es el primer `headline` y la
+bajada el primer `subheadline` de `on_screen_text`; un `cta` hoy no tiene ranura en el compositor y se devuelve en
+`unplaced_text`. Los subtítulos llegan con el productor `avatar` (F5).
 
 **Especificación del MP4** (se verifica con `ffprobe` en cada salida; si no cumple → `VIDEOLAB_OUTPUT_INVALID`):
 
