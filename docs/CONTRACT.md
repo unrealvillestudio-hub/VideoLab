@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.0.1 (2026-11-07)
+# CONTRATO DE VIDEOLAB — v1.0.2 (2026-11-07)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -34,8 +34,8 @@ Un pedido inválido no crea job: responde `4xx { status:'error', error_label, er
 POST /api/execute
 {
   brandId:      string,                 // obligatorio
-  pieceId:      string,                 // obligatorio
-  parentJobId:  string,                 // obligatorio
+  pieceId:      uuid,                   // obligatorio (lo tipa el libro de costos)
+  parentJobId:  uuid,                   // obligatorio (lab_jobs.id del carril)
   params: {
     platform:   string,                 // p. ej. meta_ig, meta_fb, tiktok
     format:     'reel',                 // la SUPERFICIE (intel.platform_format_profiles)

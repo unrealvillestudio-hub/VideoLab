@@ -18,7 +18,7 @@ async function caso(nombre, fn) {
 }
 
 const PEDIDO = () => ({
-  brandId: 'MarcaSintetica', pieceId: 'p-1', parentJobId: '00000000-0000-0000-0000-000000000001',
+  brandId: 'MarcaSintetica', pieceId: '00000000-0000-0000-0000-0000000000aa', parentJobId: '00000000-0000-0000-0000-000000000001',
   params: { platform: 'meta_ig', format: 'reel', video_style: 'product_showcase' },
   previousOutputs: { voice_script: 'hola', on_screen_text: [{ order: 1, text: 'Titular', role: 'headline' }], image: { url: 'https://x/i.png' } },
 });
@@ -30,7 +30,7 @@ console.log('execute — entrada asíncrona');
 
 await caso('un pedido válido pasa; cada campo obligatorio ausente da VIDEOLAB_BAD_REQUEST', () => {
   assert.equal(C.validateRequest(PEDIDO()).brandId, 'MarcaSintetica');
-  const quitar = [(r) => delete r.brandId, (r) => delete r.parentJobId, (r) => { r.params.format = 'story'; },
+  const quitar = [(r) => delete r.brandId, (r) => delete r.parentJobId, (r) => { r.pieceId = 'prueba-f6-render'; }, (r) => { r.parentJobId = 'job-1'; }, (r) => { r.params.format = 'story'; },
     (r) => { r.params.video_style = 'otro'; }, (r) => { r.params.producer = 'kling'; }, (r) => delete r.previousOutputs.voice_script,
     (r) => { r.previousOutputs.on_screen_text[0].role = 'titulo'; }, (r) => delete r.previousOutputs.image];
   for (const q of quitar) { const r = PEDIDO(); q(r); assert.throws(() => C.validateRequest(r), (e) => e.label === 'VIDEOLAB_BAD_REQUEST'); }

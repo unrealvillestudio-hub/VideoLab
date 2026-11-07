@@ -113,6 +113,16 @@ caso('marca N+1: el ensamblado y los proveedores no nombran ninguna marca ni per
   }
 });
 
+caso('subtítulos: las etiquetas de interpretación de la voz no salen en pantalla, aunque abarquen varias palabras', () => {
+  const words = [['[frustrated,', 0, 10], ['leaning', 10, 20], ['in]', 20, 30], ['The', 40, 200], ['ritual.', 210, 500], ['[sharp]', 510, 520], ['And', 530, 700]]
+    .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));
+  assert.deepEqual(A.spokenWords(words).map((w) => w.text), ['The', 'ritual.', 'And']);
+  const ass = A.buildAss({ words, canvas: CANVAS, style: { font_family: 'x', color: '#FFFFFF', outline_color: '#000000' } });
+  const dialogos = ass.split('\n').filter((l) => l.startsWith('Dialogue:')).join('\n');
+  assert.doesNotMatch(dialogos, /\[|\]|leaning/);
+  assert.match(ass, /Dialogue: 0,0:00:00.04,0:00:00.70,Sub,,0,0,0,,The ritual\. And/);
+});
+
 caso('regla rota a propósito: sin subtítulos válidos (color mal escrito) el ensamblado no arranca', () => {
   assert.throws(() => A.buildAss({ words: [{ text: 'a', start_ms: 0, end_ms: 1 }], canvas: CANVAS, style: { font_family: 'x', color: 'blanco', outline_color: '#000000' } }),
     /color de subtítulo inválido/);
