@@ -134,12 +134,15 @@ export async function renderJob(jobId, env = process.env) {
     // Costo: segundos de cómputo del job a la tarifa vigente.
     const seconds = Math.round((Date.now() - t0) / 100) / 10;
     const cost = Math.round(seconds * Number(rate.rate_usd) * 1e6) / 1e6;
-    const ledger = await S.insert(cfg, 'ops_generation_ledger', {
-      job_id: jobId, piece_id: pieceId, brand_id: brandId, lab: LAB, output_type: 'video_render', platform: params.platform,
-      service_id: 'cloud_run', provider: 'google', model_id: RATE_MODEL, unit_type: 'per_second',
-      input_units: seconds, output_units: durationS, cost_usd: cost, duration_ms: Date.now() - t0, status: 'success',
-      rate_in: rate.rate_usd, rate_source: `ops_lab_rates:${rate.rate_id}`, rate_effective_at: rate.effective_from,
-      source_app: 'videolab-render', billable: 'refacturable', modo_cobro: 'estandar',
+    // El libro se escribe por ops_log_generation (SECURITY DEFINER), igual que los demás labs: service_role no
+    // tiene INSERT directo sobre ops_generation_ledger [medido 2026-11-07].
+    const ledgerId = await S.rpc(cfg, 'ops_log_generation', {
+      p_lab: LAB, p_brand_id: brandId, p_job_id: jobId, p_piece_id: pieceId, p_output_type: 'video_render',
+      p_platform: params.platform, p_provider: 'google', p_model_id: RATE_MODEL, p_unit_type: 'per_second',
+      p_input_units: seconds, p_output_units: durationS, p_cost_usd: cost, p_service_id: 'cloud_run',
+      p_status: 'success', p_duration_ms: Date.now() - t0, p_rate_in: rate.rate_usd,
+      p_rate_source: `ops_lab_rates:${rate.rate_id}`, p_rate_effective_at: rate.effective_from,
+      p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
     });
 
     const v = probe.streams.find((s) => s.codec_type === 'video');
@@ -148,7 +151,7 @@ export async function renderJob(jobId, env = process.env) {
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
       video_style: params.video_style, producer: PRODUCER, provider: 'unrlvl', model_id: RATE_MODEL,
       preset_source: preset.source, synthetic_person: false, text_layer: layerMeta, unplaced_text: txt.unplaced,
-      cost_usd: cost, ledger_ids: [ledger?.id].filter(Boolean),
+      cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
     };
     await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });
     return output;
