@@ -17,7 +17,28 @@ export function clipsNeeded(durationS, clipS = 8) {
  * Subtítulos ASS desde las palabras de VoiceLab ({text, start_ms, end_ms}), en grupos de hasta `maxWords`
  * palabras. El texto es el de la voz, VERBATIM. Estilo: la familia de la marca (dato) y colores del preset. PURO.
  */
-export function buildAss({ words, canvas, style }) {
+/**
+ * Quita de las palabras de la voz las etiquetas de interpretación entre corchetes ([sharp], [frustrated, leaning in]):
+ * dirigen la voz y no se pronuncian, así que no van en pantalla. Una etiqueta puede repartirse entre varias palabras. PURO.
+ */
+export function spokenWords(words) {
+  let depth = 0;
+  const out = [];
+  for (const w of words) {
+    let text = '';
+    for (const ch of String(w.text)) {
+      if (ch === '[') depth++;
+      else if (ch === ']') depth = Math.max(0, depth - 1);
+      else if (depth === 0) text += ch;
+    }
+    text = text.trim();
+    if (text) out.push({ ...w, text });
+  }
+  return out;
+}
+
+export function buildAss({ words: raw, canvas, style }) {
+  const words = Array.isArray(raw) ? spokenWords(raw) : raw;
   if (!Array.isArray(words) || !words.length) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'subtítulos sin palabras de la voz (alignment.words)');
   const maxWords = Math.max(1, num(style.max_words, 4));
   const ts = (ms) => {
