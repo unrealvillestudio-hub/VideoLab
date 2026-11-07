@@ -123,6 +123,14 @@ caso('subtítulos: las etiquetas de interpretación de la voz no salen en pantal
   assert.match(ass, /Dialogue: 0,0:00:00.04,0:00:00.70,Sub,,0,0,0,,The ritual\. And/);
 });
 
+caso('avatar de una persona del registro: la foto sale de su ficha; sin foto, falla; sin persona, las del pedido', () => {
+  const prev = { image: { url: 'https://x/pedido.png' } };
+  assert.deepEqual(A.sourceImages({ producer: 'avatar', personId: 'p1', person: { avatar_photo_url: 'https://x/ficha.jpg' }, prev }), [{ url: 'https://x/ficha.jpg' }]);
+  assert.throws(() => A.sourceImages({ producer: 'avatar', personId: 'p1', person: { avatar_photo_url: null }, prev }), /no tiene foto de avatar/);
+  assert.deepEqual(A.sourceImages({ producer: 'avatar', personId: null, person: undefined, prev }), [{ url: 'https://x/pedido.png' }]);
+  assert.deepEqual(A.sourceImages({ producer: 'render', personId: 'p1', person: undefined, prev }), [{ url: 'https://x/pedido.png' }]);
+});
+
 caso('regla rota a propósito: sin subtítulos válidos (color mal escrito) el ensamblado no arranca', () => {
   assert.throws(() => A.buildAss({ words: [{ text: 'a', start_ms: 0, end_ms: 1 }], canvas: CANVAS, style: { font_family: 'x', color: 'blanco', outline_color: '#000000' } }),
     /color de subtítulo inválido/);
