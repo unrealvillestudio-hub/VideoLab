@@ -21,14 +21,14 @@
 // Ejecutar:  node tests/sin_voseo_test.mjs
 // Sin dependencias.
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 import { formasVoseantes } from "./idioma_voseo.mjs";
 
 const RAIZ = fileURLToPath(new URL("..", import.meta.url));
-const CARPETAS = ["api", "src"];
+const CARPETAS = ["api", "src", "legacy", "contract"].filter((c) => existsSync(join(RAIZ, c)));
 const MINIMO = 36;
 const CITAS = [
   { archivo: "src/config/brands.ts", forma: "Vivos\u00e9", motivo: "nombre propio de un producto; no es una forma verbal" },
