@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.0.0 (2026-11-07)
+# CONTRATO DE VIDEOLAB — v1.0.1 (2026-11-07)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -15,10 +15,16 @@ los respaldos no se implementan hasta que hagan falta; UGC y formatos de product
    VideoLab no tiene URL cableada en ningún consumidor.
 2. `POST /api/execute` valida el pedido, crea una fila en `public.lab_jobs`
    (`lab='videolab'`, `job_type='videolab'`, `parent_job_id` = el job del carril) y responde
-   **`202 { job_id, status: 'queued' }`** sin esperar el render.
+   **`202 { job_id, status: 'running' }`** sin esperar el render. La fila nace en `running` porque la ejecución
+   se lanza en la misma petición, y porque el trigger `lab_jobs_trigger_worker` despacha al Edge Function
+   `lab-worker` toda fila que nace en `pending` o `queued` (v1.0.1, F6).
 3. El render corre en un Cloud Run Job del proyecto de GCP del ecosistema.
-4. El carril sondea `lab_jobs` por `id` o por `parent_job_id`. Estados: `queued → running → completed | failed`.
-5. **Entrega por sondeo.** Un `callback_url` queda para una segunda fase, si hace falta.
+4. El carril sondea `lab_jobs` por `id` o por `parent_job_id`. Estados: `running → completed | failed`
+   (`queued` queda reservado; hoy ninguna fila de VideoLab pasa por él).
+5. **Tope de una ejecución: `max_run_ms` = 900 000 (15 min).** El job se cierra en `failed` con `VIDEOLAB_TIMEOUT`
+   un minuto antes del tope. Una fila que siga en `running` pasado `created_at + max_run_ms` está muerta (la tarea
+   cayó sin escribir): el carril deja de sondearla y la trata como `VIDEOLAB_TIMEOUT`.
+6. **Entrega por sondeo.** Un `callback_url` queda para una segunda fase, si hace falta.
 
 Un pedido inválido no crea job: responde `4xx { status:'error', error_label, error }`.
 
@@ -146,6 +152,7 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 | `VIDEOLAB_PROVIDER_FAILED` | el proveedor falló o no respondió a tiempo |
 | `VIDEOLAB_SPEND_CAP` | se alcanzó el tope mensual del productor |
 | `VIDEOLAB_OUTPUT_INVALID` | el MP4 no cumple la especificación de §5 |
+| `VIDEOLAB_TIMEOUT` | el render superó el tope de una ejecución (§1, `max_run_ms`) |
 
 ## 8. Fuera de este contrato
 
