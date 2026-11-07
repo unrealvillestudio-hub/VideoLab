@@ -10,28 +10,85 @@
     "job_table": "public.lab_jobs",
     "job_lab": "videolab",
     "job_type": "videolab",
-    "job_statuses": ["queued", "running", "completed", "failed"],
+    "job_statuses": [
+      "queued",
+      "running",
+      "completed",
+      "failed"
+    ],
     "delivery": "polling"
   },
   "request": {
-    "required": ["brandId", "pieceId", "parentJobId", "params", "previousOutputs"],
+    "required": [
+      "brandId",
+      "pieceId",
+      "parentJobId",
+      "params",
+      "previousOutputs"
+    ],
     "params": {
-      "required": ["platform", "format", "video_style"],
-      "optional": ["producer", "person_blueprint_id", "duration_target_ms", "canvas"]
+      "required": [
+        "platform",
+        "format",
+        "video_style"
+      ],
+      "optional": [
+        "producer",
+        "person_blueprint_id",
+        "duration_target_ms",
+        "canvas"
+      ]
     },
     "previousOutputs": {
-      "required": ["voice_script", "on_screen_text"],
-      "optional": ["image", "images", "voice", "music"]
+      "required": [
+        "voice_script",
+        "on_screen_text"
+      ],
+      "optional": [
+        "image",
+        "images",
+        "voice",
+        "music",
+        "video_prompt"
+      ]
     }
   },
   "format": "reel",
-  "video_styles": ["product_showcase", "product_demo", "before_after", "unboxing", "ugc"],
-  "producers": ["render", "generative", "avatar"],
-  "on_screen_text_roles": ["headline", "subheadline", "cta"],
-  "consent_scopes": ["voice", "image", "avatar"],
+  "video_styles": [
+    "product_showcase",
+    "product_demo",
+    "before_after",
+    "unboxing",
+    "ugc"
+  ],
+  "producers": [
+    "render",
+    "generative",
+    "avatar"
+  ],
+  "on_screen_text_roles": [
+    "headline",
+    "subheadline",
+    "cta"
+  ],
+  "consent_scopes": [
+    "voice",
+    "image",
+    "avatar"
+  ],
   "output": {
     "field": "lab_jobs.output_parsed.video",
-    "required": ["url", "storage_path", "poster_url", "width", "height", "fps", "duration_ms", "codec", "audio"],
+    "required": [
+      "url",
+      "storage_path",
+      "poster_url",
+      "width",
+      "height",
+      "fps",
+      "duration_ms",
+      "codec",
+      "audio"
+    ],
     "spec": {
       "width": 1080,
       "height": 1920,

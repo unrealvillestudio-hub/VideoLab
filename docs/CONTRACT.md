@@ -44,6 +44,7 @@ POST /api/execute
     on_screen_text: [{ order, text, role: headline | subheadline | cta, emphasis?: string[] }],
     image?:  { url },                   // imagen limpia (sin texto) de ImageLab
     images?: [{ url, role? }],          // varias imágenes (p. ej. before_after)
+    video_prompt?: string,              // movimiento de la escena para `generative` (obligatorio ahí), ya juzgado
     voice?:  { audio_url, duration_ms, alignment?, person_id?, consent_ref? },   // de VoiceLab
     music?:  { audio_url, duration_ms, loudness_lufs?, license? }                // de VoiceLab
   }
@@ -84,7 +85,12 @@ POST /api/execute
   persona y de la marca, nunca una rama de código.
 - **Persona real:** exige consentimiento vigente en `public.person_consents` para el ámbito que use
   (`voice`, `image`, `avatar`). Sin fila vigente → `VIDEOLAB_CONSENT_MISSING` y **no se llama al proveedor**.
-- **Persona sintética:** no exige consentimiento; la pieza queda marcada como sintética en la salida.
+- **Persona sintética:** el pedido no trae `person_blueprint_id` (la imagen es de una persona generada). No exige
+  consentimiento y la salida lleva `synthetic_person: true`. Con `person_blueprint_id`, la persona es real y se exige.
+- **Generative (F5):** Veo 3.1 Fast anima la imagen limpia ya ajustada al lienzo, en clips de 8 s (hasta 3) según la
+  duración de la voz, con `video_prompt`. **Avatar (F5):** HeyGen anima la misma imagen con la voz de VoiceLab
+  (`type: image`, Avatar IV); los subtítulos salen de `voice.alignment.words`, con la familia de la marca
+  (`brand_typography`, rol del preset). El tope mensual (`videolab_producers`) se comprueba antes de llamar.
 - La foto del avatar sale del blueprint; la voz, de VoiceLab.
 
 ## 5. Salida
