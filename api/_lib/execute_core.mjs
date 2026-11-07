@@ -18,6 +18,7 @@ export const INITIAL_STATUS = 'running';
 const STYLES = ['product_showcase', 'product_demo', 'before_after', 'unboxing', 'ugc'];
 const PRODUCERS = ['render', 'generative', 'avatar'];
 const ROLES = ['headline', 'subheadline', 'cta'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class ExecuteError extends Error {
   constructor(label, message, status = 400) { super(message); this.label = label; this.status = status; }
@@ -31,6 +32,9 @@ const obj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 export function validateRequest(body) {
   if (!obj(body)) bad('el cuerpo debe ser un objeto JSON');
   for (const k of ['brandId', 'pieceId', 'parentJobId']) if (!str(body[k])) bad(`falta ${k}`);
+  // pieceId y parentJobId son UUID: el libro de costos (ops_log_generation.p_piece_id) y lab_jobs.parent_job_id
+  // los tipan así. Un texto pasaría hasta el final del render y fallaría al asentar el costo, ya gastado.
+  for (const k of ['pieceId', 'parentJobId']) if (!UUID.test(body[k])) bad(`${k} debe ser un UUID`);
   const p = body.params, prev = body.previousOutputs;
   if (!obj(p)) bad('falta params');
   if (!obj(prev)) bad('falta previousOutputs');
