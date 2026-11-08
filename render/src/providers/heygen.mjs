@@ -6,11 +6,11 @@ import { RenderError } from '../plan.mjs';
 const BASE = 'https://api.heygen.com';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function heygenClip({ imageUrl, audioUrl, title, timeoutMs = 840000 }) {
+export async function heygenClip({ imageUrl, audioUrl, title, direction, timeoutMs = 840000 }) {
   const key = process.env.HEYGEN_API_KEY;
   if (!key) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'HEYGEN_API_KEY no configurado');
   const h = { 'x-api-key': key, 'Content-Type': 'application/json' };
-  const res = await fetch(`${BASE}/v3/videos`, { method: 'POST', headers: h, body: JSON.stringify(heygenRequestBody({ imageUrl, audioUrl, title })) });
+  const res = await fetch(`${BASE}/v3/videos`, { method: 'POST', headers: h, body: JSON.stringify(heygenRequestBody({ imageUrl, audioUrl, title, direction })) });
   const body = await res.json().catch(() => ({}));
   const id = body?.data?.video_id;
   if (!res.ok || !id) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `HeyGen ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);

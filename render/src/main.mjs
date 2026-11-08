@@ -187,7 +187,7 @@ export async function renderJob(jobId, env = process.env) {
         if (!voice) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab');
         durationS = renderDurationS({ preset, voiceMs: voice.ms });
         await capCheck(cfg, prod, model, modelRate, durationS);
-        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}` });
+        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}`, direction: preset.motion?.avatar ?? null });
         const p = join(work, 'clip0.mp4');
         writeFileSync(p, hg.bytes);
         clips = [p];

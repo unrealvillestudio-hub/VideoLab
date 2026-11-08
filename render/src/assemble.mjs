@@ -171,13 +171,26 @@ export function veoVideosFrom(op) {
   return vids;
 }
 
-/** HeyGen · POST /v3/videos, imagen que habla con audio propio (Avatar IV por defecto). PURO. */
-export function heygenRequestBody({ imageUrl, audioUrl, title }) {
+const EXPRESSIVENESS = ['high', 'medium', 'low'];
+
+/**
+ * HeyGen · POST /v3/videos, imagen que habla con audio propio (Avatar IV por defecto). PURO.
+ * `direction` es dato del preset (`videolab_params.motion.avatar`): `expressiveness` (high | medium | low; HeyGen usa
+ * `low` si falta) y `motion_prompt` (gestos, cejas, parpadeo, sonrisa…). Sin dirección, el cuerpo es el de siempre.
+ */
+export function heygenRequestBody({ imageUrl, audioUrl, title, direction }) {
   if (!audioUrl) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab (previousOutputs.voice.audio_url)');
   if (!imageUrl) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la imagen de la persona');
+  const d = direction ?? {};
+  if (d.expressiveness != null && !EXPRESSIVENESS.includes(d.expressiveness)) {
+    throw new RenderError('VIDEOLAB_BAD_REQUEST', `motion.avatar.expressiveness inválido: ${d.expressiveness}`);
+  }
+  const motionPrompt = typeof d.motion_prompt === 'string' ? d.motion_prompt.trim() : '';
   return {
     type: 'image', image: { type: 'url', url: imageUrl }, audio_url: audioUrl,
     aspect_ratio: '9:16', resolution: '1080p', fit: 'cover', ...(title ? { title } : {}),
+    ...(d.expressiveness ? { expressiveness: d.expressiveness } : {}),
+    ...(motionPrompt ? { motion_prompt: motionPrompt } : {}),
   };
 }
 

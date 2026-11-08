@@ -64,6 +64,16 @@ caso('HeyGen: imagen que habla con audio propio, 9:16 1080p (forma medida en dev
   assert.equal(A.heygenStatus({ status: 'failed', failure_message: 'no face' }).reason, 'no face');
 });
 
+caso('HeyGen: la dirección del avatar (expresividad y movimiento) viaja si el preset la trae; mal escrita, falla', () => {
+  const base = { imageUrl: 'https://x/f.png', audioUrl: 'https://x/v.mp3' };
+  const sin = A.heygenRequestBody(base);
+  assert.ok(!('expressiveness' in sin) && !('motion_prompt' in sin));
+  const con = A.heygenRequestBody({ ...base, direction: { expressiveness: 'high', motion_prompt: '  cejas que se elevan, parpadeo natural  ' } });
+  assert.equal(con.expressiveness, 'high');
+  assert.equal(con.motion_prompt, 'cejas que se elevan, parpadeo natural');
+  assert.throws(() => A.heygenRequestBody({ ...base, direction: { expressiveness: 'altísima' } }), /expressiveness inválido/);
+});
+
 caso('subtítulos: el texto de la voz VERBATIM, en grupos, con la familia de la marca (dato)', () => {
   const words = [['Hola', 0, 300], ['esto', 320, 600], ['es', 620, 700], ['una', 720, 900], ['prueba.', 920, 1400]]
     .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));

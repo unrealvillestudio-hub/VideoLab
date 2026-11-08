@@ -97,6 +97,8 @@ POST /api/execute
   duración de la voz, con `video_prompt`. **Avatar (F5):** HeyGen anima la misma imagen con la voz de VoiceLab
   (`type: image`, Avatar IV); los subtítulos salen de `voice.alignment.words`, con la familia de la marca
   (`brand_typography`, rol del preset). El tope mensual (`videolab_producers`) se comprueba antes de llamar.
+  La dirección del avatar —`expressiveness` y `motion_prompt` de HeyGen— es dato del preset (`videolab_params.motion.avatar`),
+  sobrescribible por marca.
 - La foto del avatar sale de la ficha de la persona (`person_blueprints.avatar_photo_url`, decisión de Sam 2026-11-07);
   sin foto en la ficha → `VIDEOLAB_BAD_REQUEST`. Con `person_blueprint_id`, `previousOutputs.image` no hace falta. La voz, de VoiceLab.
 
