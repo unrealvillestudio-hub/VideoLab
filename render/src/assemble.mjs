@@ -173,6 +173,42 @@ export function veoVideosFrom(op) {
 
 const EXPRESSIVENESS = ['high', 'medium', 'low'];
 
+/** Generador pseudoaleatorio determinista (mulberry32) a partir de un texto. PURO. */
+function seeded(text) {
+  let h = 2166136261;
+  for (const ch of String(text)) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+  return () => {
+    h = (h + 0x6D2B79F5) | 0;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Dirección del avatar de un video. Si el preset trae `picks` ({categoría: n}), elige n acciones de cada categoría
+ * del catálogo (`videolab_avatar_direction`: las del sistema y las de la marca) con una semilla por job, así cada
+ * video rota; el motion_prompt es `base` + las acciones elegidas. Sin `picks`, devuelve la dirección tal cual.
+ * Una categoría pedida sin acciones en el catálogo falla nombrándola. PURO.
+ */
+export function composeAvatarDirection({ avatar, catalog, seed }) {
+  if (!avatar) return null;
+  if (!avatar.picks) return { expressiveness: avatar.expressiveness, motion_prompt: avatar.motion_prompt, picked: [] };
+  const rnd = seeded(seed);
+  const picked = [];
+  for (const [category, n] of Object.entries(avatar.picks)) {
+    const k = Math.max(0, Math.floor(Number(n) || 0));
+    if (!k) continue;
+    const pool = (catalog ?? []).filter((r) => r.category === category && r.active !== false && String(r.text ?? '').trim());
+    if (!pool.length) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el catálogo de dirección del avatar no tiene acciones de «${category}»`);
+    const bag = [...pool];
+    for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+    picked.push(...bag.slice(0, Math.min(k, bag.length)));
+  }
+  const motion_prompt = [String(avatar.base ?? '').trim(), ...picked.map((r) => String(r.text).trim())].filter(Boolean).join(' ');
+  return { expressiveness: avatar.expressiveness, motion_prompt, picked: picked.map((r) => r.id) };
+}
+
 /**
  * HeyGen · POST /v3/videos, imagen que habla con audio propio (Avatar IV por defecto). PURO.
  * `direction` es dato del preset (`videolab_params.motion.avatar`): `expressiveness` (high | medium | low; HeyGen usa

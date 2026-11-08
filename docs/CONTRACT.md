@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.0.3 (2026-11-07)
+# CONTRATO DE VIDEOLAB — v1.0.4 (2026-11-08)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -98,7 +98,8 @@ POST /api/execute
   (`type: image`, Avatar IV); los subtítulos salen de `voice.alignment.words`, con la familia de la marca
   (`brand_typography`, rol del preset). El tope mensual (`videolab_producers`) se comprueba antes de llamar.
   La dirección del avatar —`expressiveness` y `motion_prompt` de HeyGen— es dato del preset (`videolab_params.motion.avatar`),
-  sobrescribible por marca.
+  sobrescribible por marca. Con `motion.avatar.picks`, cada video elige acciones del catálogo `videolab_avatar_direction`
+  (cara, ojos, cabeza, manos, cabello, postura, mirada) con una semilla por job, y la salida dice cuáles usó (`avatar_direction`).
 - La foto del avatar sale de la ficha de la persona (`person_blueprints.avatar_photo_url`, decisión de Sam 2026-11-07);
   sin foto en la ficha → `VIDEOLAB_BAD_REQUEST`. Con `person_blueprint_id`, `previousOutputs.image` no hace falta. La voz, de VoiceLab.
 
@@ -111,6 +112,7 @@ En `completed`, `lab_jobs.output_parsed`:
   video: { url, storage_path, poster_url, width, height, fps, duration_ms, codec, audio },
   video_style, producer, provider, model_id, synthetic_person: boolean,
   preset_source: 'brand' | 'system',          // de qué fila salió el preset
+  avatar_direction: { expressiveness, picked: [id] } | null,   // acciones del catálogo usadas (productor avatar)
   text_layer: { compositor_version, text_rect, markers } | null,   // eco de ImageLab
   unplaced_text: [{ order, role }],           // tramos sin ranura en el compositor (p. ej. un cta): no se inventan
   cost_usd, ledger_ids: [...]
