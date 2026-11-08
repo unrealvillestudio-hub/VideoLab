@@ -101,6 +101,18 @@ caso('dirección del avatar: acciones ancladas a su momento (una al inicio, otra
   assert.throws(() => A.composeAvatarDirection({ avatar: { picks: { hands: { n: 3, timing: ['a', 'b'] } } }, catalog: cat, seed: 'x' }), /3 acciones y 2 momentos/);
 });
 
+caso('márgenes del avatar: silencio al inicio y al final, palabras desplazadas y portada dentro del reposo', () => {
+  const words = [{ text: 'Hola', start_ms: 0, end_ms: 400 }];
+  const m = A.avatarMargins({ avatar: { lead_ms: 700, tail_ms: 600 }, words });
+  assert.equal(m.filter, 'adelay=700|700,apad=pad_dur=0.600');
+  assert.deepEqual([m.words[0].start_ms, m.words[0].end_ms], [700, 1100]);
+  assert.equal(m.posterAtS, 0.35);
+  const sin = A.avatarMargins({ avatar: {}, words });
+  assert.equal(sin.filter, null);
+  assert.equal(sin.posterAtS, null);
+  assert.equal(A.avatarMargins({ avatar: { lead_ms: 99999 }, words: [] }).lead, 3000, 'tope de 3 s');
+});
+
 caso('subtítulos: el texto de la voz VERBATIM, en grupos, con la familia de la marca (dato)', () => {
   const words = [['Hola', 0, 300], ['esto', 320, 600], ['es', 620, 700], ['una', 720, 900], ['prueba.', 920, 1400]]
     .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));

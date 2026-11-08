@@ -20,6 +20,19 @@ export function sourceImages({ producer, personId, person, prev }) {
   return [prev?.image, ...(prev?.images ?? [])].filter((x) => x?.url);
 }
 
+/**
+ * Márgenes sin voz del avatar (dato: `motion.avatar.lead_ms` y `tail_ms`). Con silencio antes y después de la voz,
+ * el avatar empieza y termina en reposo (boca cerrada), y la portada sale de ese reposo. Devuelve los márgenes en ms,
+ * el filtro de audio que los añade, las palabras desplazadas por `lead` y el segundo de la portada. PURO.
+ */
+export function avatarMargins({ avatar, words }) {
+  const ms = (v) => Math.max(0, Math.min(3000, Math.round(Number(v) || 0)));
+  const lead = ms(avatar?.lead_ms), tail = ms(avatar?.tail_ms);
+  const filter = lead || tail ? `adelay=${lead}|${lead},apad=pad_dur=${(tail / 1000).toFixed(3)}` : null;
+  const shifted = (words ?? []).map((w) => ({ ...w, start_ms: Number(w.start_ms) + lead, end_ms: Number(w.end_ms) + lead }));
+  return { lead, tail, filter, words: shifted, posterAtS: lead ? lead / 2000 : null };
+}
+
 /** Cuántos clips de Veo hacen falta para cubrir la duración (cada uno dura `clipS`). Tope de 3. PURO. */
 export function clipsNeeded(durationS, clipS = 8) {
   return Math.max(1, Math.min(3, Math.ceil(durationS / clipS)));
