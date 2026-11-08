@@ -91,6 +91,16 @@ caso('dirección del avatar: rota por job desde el catálogo, respeta cuántas d
     { expressiveness: 'low', motion_prompt: 'fijo', picked: [] });
 });
 
+caso('dirección del avatar: acciones ancladas a su momento (una al inicio, otra distinta al final) y quietud entre ellas', () => {
+  const cat = [1, 2, 3, 4].map((i) => ({ id: `h${i}`, category: 'hands', text: `Hand gesture ${i}.` }));
+  const avatar = { base: 'Base.', picks: { hands: { n: 2, timing: ['At the start of the video', 'Near the end'], between: 'Otherwise the hands rest.' } } };
+  const d = A.composeAvatarDirection({ avatar, catalog: cat, seed: 'job-9' });
+  assert.equal(d.picked.length, 2);
+  assert.notEqual(d.picked[0], d.picked[1], 'dos gestos distintos');
+  assert.match(d.motion_prompt, /^Base\. At the start of the video, hand gesture \d\. Near the end, hand gesture \d\. Otherwise the hands rest\.$/);
+  assert.throws(() => A.composeAvatarDirection({ avatar: { picks: { hands: { n: 3, timing: ['a', 'b'] } } }, catalog: cat, seed: 'x' }), /3 acciones y 2 momentos/);
+});
+
 caso('subtítulos: el texto de la voz VERBATIM, en grupos, con la familia de la marca (dato)', () => {
   const words = [['Hola', 0, 300], ['esto', 320, 600], ['es', 620, 700], ['una', 720, 900], ['prueba.', 920, 1400]]
     .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));
