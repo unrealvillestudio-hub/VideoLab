@@ -196,16 +196,29 @@ export function composeAvatarDirection({ avatar, catalog, seed }) {
   if (!avatar.picks) return { expressiveness: avatar.expressiveness, motion_prompt: avatar.motion_prompt, picked: [] };
   const rnd = seeded(seed);
   const picked = [];
-  for (const [category, n] of Object.entries(avatar.picks)) {
-    const k = Math.max(0, Math.floor(Number(n) || 0));
+  const sentences = [];
+  const lowerFirst = (t) => t.charAt(0).toLowerCase() + t.slice(1);
+  for (const [category, spec] of Object.entries(avatar.picks)) {
+    // `spec` es un número (cuántas) o { n, timing: [momento…], between }: cada acción se ancla a su momento
+    // («At the start of the video», «Near the end»…) y `between` dice qué pasa fuera de esos momentos.
+    const cfg = typeof spec === 'object' && spec !== null ? spec : { n: spec };
+    const timing = Array.isArray(cfg.timing) ? cfg.timing : [];
+    const k = Math.max(0, Math.floor(Number(cfg.n ?? timing.length) || 0));
     if (!k) continue;
     const pool = (catalog ?? []).filter((r) => r.category === category && r.active !== false && String(r.text ?? '').trim());
     if (!pool.length) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el catálogo de dirección del avatar no tiene acciones de «${category}»`);
+    if (timing.length && timing.length < k) throw new RenderError('VIDEOLAB_BAD_REQUEST', `motion.avatar.picks.${category}: ${k} acciones y ${timing.length} momentos`);
     const bag = [...pool];
     for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
-    picked.push(...bag.slice(0, Math.min(k, bag.length)));
+    const chosen = bag.slice(0, Math.min(k, bag.length));
+    picked.push(...chosen);
+    chosen.forEach((r, i) => {
+      const t = String(r.text).trim();
+      sentences.push(timing[i] ? `${String(timing[i]).trim()}, ${lowerFirst(t)}` : t);
+    });
+    if (cfg.between && String(cfg.between).trim()) sentences.push(String(cfg.between).trim());
   }
-  const motion_prompt = [String(avatar.base ?? '').trim(), ...picked.map((r) => String(r.text).trim())].filter(Boolean).join(' ');
+  const motion_prompt = [String(avatar.base ?? '').trim(), ...sentences].filter(Boolean).join(' ');
   return { expressiveness: avatar.expressiveness, motion_prompt, picked: picked.map((r) => r.id) };
 }
 
