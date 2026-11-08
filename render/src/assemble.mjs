@@ -8,6 +8,18 @@ import { SPEC, RenderError } from './plan.mjs';
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
+/**
+ * Las imágenes de entrada. Avatar de una persona del registro: la foto de su ficha (`avatar_photo_url`), y sin
+ * ella falla nombrándolo, nunca usa otra imagen en silencio. Cualquier otro caso: las del pedido. PURO.
+ */
+export function sourceImages({ producer, personId, person, prev }) {
+  if (producer === 'avatar' && personId) {
+    if (!person?.avatar_photo_url) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la persona ${personId} no tiene foto de avatar en su ficha (person_blueprints.avatar_photo_url)`);
+    return [{ url: person.avatar_photo_url }];
+  }
+  return [prev?.image, ...(prev?.images ?? [])].filter((x) => x?.url);
+}
+
 /** Cuántos clips de Veo hacen falta para cubrir la duración (cada uno dura `clipS`). Tope de 3. PURO. */
 export function clipsNeeded(durationS, clipS = 8) {
   return Math.max(1, Math.min(3, Math.ceil(durationS / clipS)));

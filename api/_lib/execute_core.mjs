@@ -50,7 +50,8 @@ export function validateRequest(body) {
     if (!obj(t) || typeof t.text !== 'string' || !ROLES.includes(t.role)) bad(`on_screen_text[${i}] necesita text y role (headline | subheadline | cta)`);
   });
   const hasImage = str(prev.image?.url) || (Array.isArray(prev.images) && prev.images.some((x) => str(x?.url)));
-  if (!hasImage) bad('previousOutputs no trae imagen (image.url o images[].url)');
+  // Con una persona del registro, la imagen del avatar sale de su ficha; si no, el pedido la trae.
+  if (!hasImage && !str(p.person_blueprint_id)) bad('previousOutputs no trae imagen (image.url o images[].url)');
   return body;
 }
 

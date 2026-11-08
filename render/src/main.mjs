@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
 import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
-import { planAssemble, buildAss, clipsNeeded } from './assemble.mjs';
+import { planAssemble, buildAss, clipsNeeded, sourceImages } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip } from './providers/heygen.mjs';
 import { brandFont } from './fonts.mjs';
@@ -94,6 +94,9 @@ export async function renderJob(jobId, env = process.env) {
       const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(personId)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
       if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${personId} no tiene consentimiento vigente de avatar`);
     }
+    // La foto del avatar de una persona del registro sale de su ficha (person_blueprints.avatar_photo_url).
+    const [person] = producer === 'avatar' && personId
+      ? await S.select(cfg, `person_blueprints?id=eq.${enc(personId)}&select=avatar_photo_url`) : [];
     const [profile] = await S.select(cfg, `platform_format_profiles?platform=eq.${enc(params.platform)}&format=eq.reel&active=eq.true&select=*`, 'intel');
     const canvas = resolveCanvas(params.canvas ?? null, profile);
     const rate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: RATE_MODEL, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
@@ -102,7 +105,7 @@ export async function renderJob(jobId, env = process.env) {
     if (!il?.api_endpoint) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'lab_configs no tiene el api_endpoint de imagelab');
 
     // Entradas.
-    const imgs = [prev.image, ...(prev.images ?? [])].filter((x) => x?.url);
+    const imgs = sourceImages({ producer, personId, person, prev });
     const imagePaths = [];
     for (const [i, im] of imgs.entries()) {
       const p = join(work, `img${i}`);
