@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
 import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
-import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection } from './assemble.mjs';
+import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip } from './providers/heygen.mjs';
 import { brandFont } from './fonts.mjs';
@@ -113,6 +113,7 @@ export async function renderJob(jobId, env = process.env) {
       imagePaths.push(p);
     }
     let avatarDirection = null;
+    let margins = null;
     let voice = null;
     if (prev.voice?.audio_url) {
       const p = join(work, 'voice.audio');
@@ -186,13 +187,20 @@ export async function renderJob(jobId, env = process.env) {
         }
       } else {
         if (!voice) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab');
-        durationS = renderDurationS({ preset, voiceMs: voice.ms });
+        margins = avatarMargins({ avatar: preset.motion?.avatar ?? null, words: prev.voice.alignment?.words });
+        let avatarAudioUrl = prev.voice.audio_url;
+        if (margins.filter) {
+          const padded = join(work, 'voice_margins.mp3');
+          await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', voice.path, '-af', margins.filter, '-ar', '44100', '-b:a', '128k', padded]);
+          avatarAudioUrl = await S.upload(cfg, `${base}/voice_margins.mp3`, readFileSync(padded), 'audio/mpeg');
+        }
+        durationS = renderDurationS({ preset, voiceMs: voice.ms + margins.lead + margins.tail });
         await capCheck(cfg, prod, model, modelRate, durationS);
         const catalog = preset.motion?.avatar?.picks
           ? await S.select(cfg, `videolab_avatar_direction?active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=id,brand_id,category,text`)
           : [];
         avatarDirection = composeAvatarDirection({ avatar: preset.motion?.avatar ?? null, catalog, seed: jobId });
-        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}`, direction: avatarDirection });
+        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: avatarAudioUrl, title: `videolab ${jobId}`, direction: avatarDirection });
         const p = join(work, 'clip0.mp4');
         writeFileSync(p, hg.bytes);
         clips = [p];
@@ -204,7 +212,7 @@ export async function renderJob(jobId, env = process.env) {
           const [typo] = await S.select(cfg, `brand_typography?brand_id=eq.${enc(brandId)}&role=eq.${enc(role)}&select=font_family,css_import`);
           fontsDir = await brandFont({ cssImport: typo?.css_import, family: typo?.font_family, dir: join(work, 'fonts') });
           ass = join(work, 'subs.ass');
-          writeFileSync(ass, buildAss({ words: prev.voice.alignment?.words, canvas, style: { font_family: typo.font_family,
+          writeFileSync(ass, buildAss({ words: margins.words.length ? margins.words : prev.voice.alignment?.words, canvas, style: { font_family: typo.font_family,
             color: tt.subtitle_color ?? SUBTITLE_DEFAULT.color, outline_color: tt.subtitle_outline_color ?? SUBTITLE_DEFAULT.outline_color,
             size_pct: tt.subtitle_size_pct, margin_bottom_pct: tt.subtitle_margin_bottom_pct, max_words: tt.subtitle_max_words } }));
         }
@@ -218,7 +226,7 @@ export async function renderJob(jobId, env = process.env) {
     const fallas = validateOutput(probe, canvas, bytes);
     if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
     const poster = join(work, 'poster.jpg');
-    await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(Math.min(1.5, durationS / 2)), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
+    await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(margins?.posterAtS ?? Math.min(1.5, durationS / 2)), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
 
     const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');
     const posterUrl = await S.upload(cfg, `${base}.jpg`, readFileSync(poster), 'image/jpeg');

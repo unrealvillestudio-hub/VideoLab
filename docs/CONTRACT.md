@@ -100,6 +100,8 @@ POST /api/execute
   La dirección del avatar —`expressiveness` y `motion_prompt` de HeyGen— es dato del preset (`videolab_params.motion.avatar`),
   sobrescribible por marca. Con `motion.avatar.picks`, cada video elige acciones del catálogo `videolab_avatar_direction`
   (cara, ojos, cabeza, manos, cabello, postura, mirada) con una semilla por job, y la salida dice cuáles usó (`avatar_direction`).
+  Con `motion.avatar.lead_ms`/`tail_ms`, la voz lleva silencio antes y después: el avatar empieza y termina en reposo y la
+  portada sale de ese reposo (no empieza ni termina con la boca abierta).
 - La foto del avatar sale de la ficha de la persona (`person_blueprints.avatar_photo_url`, decisión de Sam 2026-11-07);
   sin foto en la ficha → `VIDEOLAB_BAD_REQUEST`. Con `person_blueprint_id`, `previousOutputs.image` no hace falta. La voz, de VoiceLab.
 
