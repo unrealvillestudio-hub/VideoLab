@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
 import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
-import { planAssemble, buildAss, clipsNeeded, sourceImages } from './assemble.mjs';
+import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip } from './providers/heygen.mjs';
 import { brandFont } from './fonts.mjs';
@@ -112,6 +112,7 @@ export async function renderJob(jobId, env = process.env) {
       writeFileSync(p, await S.download(im.url, `imagen ${i}`));
       imagePaths.push(p);
     }
+    let avatarDirection = null;
     let voice = null;
     if (prev.voice?.audio_url) {
       const p = join(work, 'voice.audio');
@@ -187,7 +188,11 @@ export async function renderJob(jobId, env = process.env) {
         if (!voice) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab');
         durationS = renderDurationS({ preset, voiceMs: voice.ms });
         await capCheck(cfg, prod, model, modelRate, durationS);
-        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}`, direction: preset.motion?.avatar ?? null });
+        const catalog = preset.motion?.avatar?.picks
+          ? await S.select(cfg, `videolab_avatar_direction?active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=id,brand_id,category,text`)
+          : [];
+        avatarDirection = composeAvatarDirection({ avatar: preset.motion?.avatar ?? null, catalog, seed: jobId });
+        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: prev.voice.audio_url, title: `videolab ${jobId}`, direction: avatarDirection });
         const p = join(work, 'clip0.mp4');
         writeFileSync(p, hg.bytes);
         clips = [p];
@@ -251,6 +256,7 @@ export async function renderJob(jobId, env = process.env) {
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
+      avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       text_layer: layerMeta, unplaced_text: txt.unplaced,
       cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };

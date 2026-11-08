@@ -74,6 +74,23 @@ caso('HeyGen: la dirección del avatar (expresividad y movimiento) viaja si el p
   assert.throws(() => A.heygenRequestBody({ ...base, direction: { expressiveness: 'altísima' } }), /expressiveness inválido/);
 });
 
+caso('dirección del avatar: rota por job desde el catálogo, respeta cuántas de cada categoría, y sin catálogo falla', () => {
+  const cat = [];
+  for (const c of ['hands', 'hair', 'face']) for (let i = 0; i < 6; i++) cat.push({ id: `${c}${i}`, category: c, text: `${c} acción ${i}.` });
+  const avatar = { expressiveness: 'high', base: 'Base.', picks: { hands: 3, hair: 1, face: 2 } };
+  const a = A.composeAvatarDirection({ avatar, catalog: cat, seed: 'job-1' });
+  assert.equal(a.picked.length, 6);
+  assert.equal(a.picked.filter((x) => x.startsWith('hair')).length, 1);
+  assert.equal(a.picked.filter((x) => x.startsWith('hands')).length, 3);
+  assert.ok(a.motion_prompt.startsWith('Base. '));
+  assert.deepEqual(A.composeAvatarDirection({ avatar, catalog: cat, seed: 'job-1' }), a, 'misma semilla, misma elección');
+  const distintas = new Set(['job-2', 'job-3', 'job-4', 'job-5'].map((s) => A.composeAvatarDirection({ avatar, catalog: cat, seed: s }).picked.join()));
+  assert.ok(distintas.size >= 3, 'jobs distintos rotan la elección');
+  assert.throws(() => A.composeAvatarDirection({ avatar, catalog: cat.filter((r) => r.category !== 'hair'), seed: 'x' }), /no tiene acciones de «hair»/);
+  assert.deepEqual(A.composeAvatarDirection({ avatar: { expressiveness: 'low', motion_prompt: 'fijo' }, catalog: [], seed: 'x' }),
+    { expressiveness: 'low', motion_prompt: 'fijo', picked: [] });
+});
+
 caso('subtítulos: el texto de la voz VERBATIM, en grupos, con la familia de la marca (dato)', () => {
   const words = [['Hola', 0, 300], ['esto', 320, 600], ['es', 620, 700], ['una', 720, 900], ['prueba.', 920, 1400]]
     .map(([text, start_ms, end_ms]) => ({ text, start_ms, end_ms }));
