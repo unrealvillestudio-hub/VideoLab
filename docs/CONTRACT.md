@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.0.4 (2026-11-08)
+# CONTRATO DE VIDEOLAB — v1.0.5 (2026-11-11)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -42,6 +42,7 @@ POST /api/execute
     video_style: product_showcase | product_demo | before_after | unboxing | ugc,
     producer?:  render | generative | avatar,   // si falta, sale del dato de la marca
     person_blueprint_id?: string,       // UGC con persona
+    avatar_engine?: string,             // motor del gemelo (avatar_iv por defecto; avatar_iii, avatar_v…)
     duration_target_ms?: number,
     canvas?:    { width, height }       // si llega, debe coincidir con el perfil del formato
   },
@@ -104,6 +105,13 @@ POST /api/execute
   portada sale de ese reposo (no empieza ni termina con la boca abierta).
 - La foto del avatar sale de la ficha de la persona (`person_blueprints.avatar_photo_url`, decisión de Sam 2026-11-07);
   sin foto en la ficha → `VIDEOLAB_BAD_REQUEST`. Con `person_blueprint_id`, `previousOutputs.image` no hace falta. La voz, de VoiceLab.
+- **Gemelo digital (v1.0.5, decisión de Sam 2026-11-11).** Si la ficha tiene `person_blueprints.avatar_look_id` (el look de
+  HeyGen), el avatar se anima desde ese look (`type: avatar`) y no desde la foto. El motor sale de `params.avatar_engine`,
+  si no del preset (`motion.avatar.engine`), si no `avatar_iv`; se valida contra los motores que el propio look declara
+  (`supported_api_engines`) y un motor que no admite → `VIDEOLAB_BAD_REQUEST`. La tarifa sale de `ops_lab_rates` con el
+  motor y el tipo de look (p. ej. `avatar-iv-digital-twin`); sin fila vigente, el job falla antes de llamar al proveedor.
+  `motion_prompt` sólo viaja a los motores que lo admiten y `expressiveness` sólo a una foto con Avatar IV. Sin foto en la
+  ficha, la imagen del gemelo sirve para colocar el texto. Sin `avatar_look_id`, todo sigue como en v1.0.4.
 
 ## 5. Salida
 
@@ -115,6 +123,7 @@ En `completed`, `lab_jobs.output_parsed`:
   video_style, producer, provider, model_id, synthetic_person: boolean,
   preset_source: 'brand' | 'system',          // de qué fila salió el preset
   avatar_direction: { expressiveness, picked: [id] } | null,   // acciones del catálogo usadas (productor avatar)
+  avatar_subject: { mode, engine, look_id, avatar_type } | null, // gemelo o foto, y con qué motor (productor avatar)
   text_layer: { compositor_version, text_rect, markers } | null,   // eco de ImageLab
   unplaced_text: [{ order, role }],           // tramos sin ranura en el compositor (p. ej. un cta): no se inventan
   cost_usd, ledger_ids: [...]

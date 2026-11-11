@@ -12,10 +12,12 @@ const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
  * Las imágenes de entrada. Avatar de una persona del registro: la foto de su ficha (`avatar_photo_url`), y sin
  * ella falla nombrándolo, nunca usa otra imagen en silencio. Cualquier otro caso: las del pedido. PURO.
  */
-export function sourceImages({ producer, personId, person, prev }) {
+export function sourceImages({ producer, personId, person, prev, lookImageUrl = null }) {
   if (producer === 'avatar' && personId) {
-    if (!person?.avatar_photo_url) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la persona ${personId} no tiene foto de avatar en su ficha (person_blueprints.avatar_photo_url)`);
-    return [{ url: person.avatar_photo_url }];
+    // La foto de la ficha manda; si la persona sólo tiene gemelo, la imagen del gemelo sirve para colocar el texto.
+    const url = person?.avatar_photo_url || lookImageUrl;
+    if (!url) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la persona ${personId} no tiene foto de avatar ni gemelo en su ficha (person_blueprints.avatar_photo_url / avatar_look_id)`);
+    return [{ url }];
   }
   return [prev?.image, ...(prev?.images ?? [])].filter((x) => x?.url);
 }
@@ -236,23 +238,60 @@ export function composeAvatarDirection({ avatar, catalog, seed }) {
 }
 
 /**
- * HeyGen · POST /v3/videos, imagen que habla con audio propio (Avatar IV por defecto). PURO.
- * `direction` es dato del preset (`videolab_params.motion.avatar`): `expressiveness` (high | medium | low; HeyGen usa
- * `low` si falta) y `motion_prompt` (gestos, cejas, parpadeo, sonrisa…). Sin dirección, el cuerpo es el de siempre.
+ * Motores de HeyGen y lo que cada uno admite (documentación de HeyGen, «Audio to Video», medida el 2026-11-11). Son
+ * capacidades del PROVEEDOR, no de una marca: `motion_prompt` va con Avatar V y Avatar 6 en cualquier look, y con
+ * Avatar IV sólo en un look de foto; `expressiveness` sólo con Avatar IV en una foto.
  */
-export function heygenRequestBody({ imageUrl, audioUrl, title, direction }) {
+const DEFAULT_ENGINE = 'avatar_iv';
+const MOTION_PROMPT_ENGINES = ['avatar_v', 'heygen-avatar-6', 'heygen-avatar-6-turbo'];
+
+/**
+ * Qué anima HeyGen y a qué tarifa. Con un look (gemelo, avatar de estudio o de foto) se valida el motor contra los que
+ * el propio look declara (`supported_api_engines`); sin look, se anima la imagen, que sólo admite Avatar IV. El
+ * `rateModelId` es la fila de `ops_lab_rates`: el motor, más el tipo de look cuando no es una foto. PURO.
+ */
+export function avatarSubject({ lookId = null, look = null, engine = null, photoModelId }) {
+  if (lookId) {
+    if (!look || look.id !== lookId) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `HeyGen no devolvió el look ${lookId}`);
+    if (look.status !== 'completed') throw new RenderError('VIDEOLAB_BAD_REQUEST', `el look ${lookId} no está listo en HeyGen (status ${look.status})`);
+    const e = engine ?? DEFAULT_ENGINE;
+    const engines = look.supported_api_engines ?? [];
+    if (!engines.includes(e)) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el look ${lookId} no admite el motor ${e} (admite: ${engines.join(', ') || 'ninguno'})`);
+    const type = String(look.avatar_type ?? 'photo_avatar');
+    const rateModelId = e.replace(/_/g, '-') + (type === 'photo_avatar' ? '' : `-${type.replace(/_/g, '-')}`);
+    return { mode: 'look', lookId, engine: e, avatarType: type, rateModelId, lookImageUrl: look.preview_image_url ?? null };
+  }
+  if (engine && engine !== DEFAULT_ENGINE) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el motor ${engine} necesita un look de HeyGen (person_blueprints.avatar_look_id); una imagen sólo se anima con ${DEFAULT_ENGINE}`);
+  return { mode: 'image', lookId: null, engine: DEFAULT_ENGINE, avatarType: 'photo_avatar', rateModelId: photoModelId, lookImageUrl: null };
+}
+
+/**
+ * HeyGen · POST /v3/videos con audio propio: una imagen (`type: image`, Avatar IV) o un look (`type: avatar`, motor de
+ * `subject`). `direction` es dato del preset (`videolab_params.motion.avatar`): `expressiveness` (high | medium | low;
+ * HeyGen usa `low` si falta) y `motion_prompt`; cada uno se envía sólo al motor que lo admite. Sin `subject` ni
+ * dirección, el cuerpo es el de siempre. PURO.
+ */
+export function heygenRequestBody({ imageUrl, audioUrl, title, direction, subject = null }) {
   if (!audioUrl) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la voz de VoiceLab (previousOutputs.voice.audio_url)');
-  if (!imageUrl) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la imagen de la persona');
+  const isLook = subject?.mode === 'look';
+  if (!isLook && !imageUrl) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el productor avatar necesita la imagen de la persona');
   const d = direction ?? {};
   if (d.expressiveness != null && !EXPRESSIVENESS.includes(d.expressiveness)) {
     throw new RenderError('VIDEOLAB_BAD_REQUEST', `motion.avatar.expressiveness inválido: ${d.expressiveness}`);
   }
+  const engine = isLook ? subject.engine : DEFAULT_ENGINE;
+  const photo = !isLook || subject.avatarType === 'photo_avatar';
   const motionPrompt = typeof d.motion_prompt === 'string' ? d.motion_prompt.trim() : '';
+  const allowsMotion = MOTION_PROMPT_ENGINES.includes(engine) || (engine === DEFAULT_ENGINE && photo);
+  const allowsExpr = engine === DEFAULT_ENGINE && photo;
+  const who = isLook
+    ? { type: 'avatar', avatar_id: subject.lookId, ...(engine === DEFAULT_ENGINE ? {} : { engine: { type: engine } }) }
+    : { type: 'image', image: { type: 'url', url: imageUrl } };
   return {
-    type: 'image', image: { type: 'url', url: imageUrl }, audio_url: audioUrl,
+    ...who, audio_url: audioUrl,
     aspect_ratio: '9:16', resolution: '1080p', fit: 'cover', ...(title ? { title } : {}),
-    ...(d.expressiveness ? { expressiveness: d.expressiveness } : {}),
-    ...(motionPrompt ? { motion_prompt: motionPrompt } : {}),
+    ...(allowsExpr && d.expressiveness ? { expressiveness: d.expressiveness } : {}),
+    ...(allowsMotion && motionPrompt ? { motion_prompt: motionPrompt } : {}),
   };
 }
 
