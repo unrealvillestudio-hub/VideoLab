@@ -185,5 +185,43 @@ caso('regla rota a propósito: sin subtítulos válidos (color mal escrito) el e
     /color de subtítulo inválido/);
 });
 
+caso('gemelo de la ficha: el motor se valida contra el look y la tarifa sale del motor y del tipo de look', () => {
+  const look = { id: 'L1', status: 'completed', avatar_type: 'digital_twin', preview_image_url: 'https://x/l1.jpg',
+    supported_api_engines: ['avatar_v', 'avatar_iv', 'avatar_iii', 'heygen-avatar-6'] };
+  const iv = A.avatarSubject({ lookId: 'L1', look, photoModelId: 'avatar-iv' });
+  assert.deepEqual([iv.mode, iv.engine, iv.rateModelId, iv.lookImageUrl], ['look', 'avatar_iv', 'avatar-iv-digital-twin', 'https://x/l1.jpg']);
+  assert.equal(A.avatarSubject({ lookId: 'L1', look, engine: 'avatar_v', photoModelId: 'avatar-iv' }).rateModelId, 'avatar-v-digital-twin');
+  assert.equal(A.avatarSubject({ lookId: 'L1', look, engine: 'avatar_iii', photoModelId: 'avatar-iv' }).rateModelId, 'avatar-iii-digital-twin');
+  assert.equal(A.avatarSubject({ lookId: 'P1', look: { ...look, id: 'P1', avatar_type: 'photo_avatar' }, photoModelId: 'avatar-iv' }).rateModelId, 'avatar-iv');
+  assert.throws(() => A.avatarSubject({ lookId: 'L1', look, engine: 'kling', photoModelId: 'avatar-iv' }), /no admite el motor kling/);
+  assert.throws(() => A.avatarSubject({ lookId: 'L1', look: { ...look, status: 'processing' }, photoModelId: 'avatar-iv' }), /no está listo/);
+  assert.throws(() => A.avatarSubject({ lookId: 'L1', look: null, photoModelId: 'avatar-iv' }), /no devolvió el look/);
+  // Sin look: la imagen sólo se anima con Avatar IV, a la tarifa de foto del productor.
+  assert.deepEqual(A.avatarSubject({ photoModelId: 'avatar-iv' }).rateModelId, 'avatar-iv');
+  assert.throws(() => A.avatarSubject({ engine: 'avatar_v', photoModelId: 'avatar-iv' }), /necesita un look/);
+});
+
+caso('HeyGen con gemelo: type avatar con avatar_id; motion_prompt sólo donde el motor lo admite; expresividad sólo en foto', () => {
+  const look = { id: 'L1', status: 'completed', avatar_type: 'digital_twin', supported_api_engines: ['avatar_v', 'avatar_iv'] };
+  const dir = { expressiveness: 'high', motion_prompt: 'cejas y manos' };
+  const iv = A.heygenRequestBody({ audioUrl: 'https://x/v.mp3', direction: dir, subject: A.avatarSubject({ lookId: 'L1', look, photoModelId: 'avatar-iv' }) });
+  assert.deepEqual([iv.type, iv.avatar_id, iv.engine, iv.image], ['avatar', 'L1', undefined, undefined]);
+  assert.ok(!('motion_prompt' in iv) && !('expressiveness' in iv), 'Avatar IV con gemelo no admite motion_prompt ni expressiveness');
+  const v = A.heygenRequestBody({ audioUrl: 'https://x/v.mp3', direction: dir, subject: A.avatarSubject({ lookId: 'L1', look, engine: 'avatar_v', photoModelId: 'avatar-iv' }) });
+  assert.deepEqual(v.engine, { type: 'avatar_v' });
+  assert.equal(v.motion_prompt, 'cejas y manos');
+  assert.ok(!('expressiveness' in v));
+  // La foto sigue igual que antes: con subject de imagen o sin subject, el cuerpo no cambia.
+  const foto = A.heygenRequestBody({ imageUrl: 'https://x/f.png', audioUrl: 'https://x/v.mp3', direction: dir, subject: A.avatarSubject({ photoModelId: 'avatar-iv' }) });
+  assert.deepEqual(foto, A.heygenRequestBody({ imageUrl: 'https://x/f.png', audioUrl: 'https://x/v.mp3', direction: dir }));
+});
+
+caso('persona con gemelo y sin foto: la imagen del gemelo sirve para colocar el texto; sin ninguna de las dos, falla', () => {
+  const prev = { image: { url: 'https://x/pedido.png' } };
+  assert.deepEqual(A.sourceImages({ producer: 'avatar', personId: 'p1', person: { avatar_photo_url: null }, prev, lookImageUrl: 'https://x/l1.jpg' }), [{ url: 'https://x/l1.jpg' }]);
+  assert.deepEqual(A.sourceImages({ producer: 'avatar', personId: 'p1', person: { avatar_photo_url: 'https://x/f.jpg' }, prev, lookImageUrl: 'https://x/l1.jpg' }), [{ url: 'https://x/f.jpg' }]);
+  assert.throws(() => A.sourceImages({ producer: 'avatar', personId: 'p1', person: {}, prev }), /ni gemelo/);
+});
+
 if (fallos) { console.error(`\n${fallos} caso(s) en rojo`); process.exit(1); }
 console.log('\nassemble: todo en verde');

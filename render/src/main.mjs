@@ -12,9 +12,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
 import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
-import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins } from './assemble.mjs';
+import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
-import { heygenClip } from './providers/heygen.mjs';
+import { heygenClip, heygenLook } from './providers/heygen.mjs';
 import { brandFont } from './fonts.mjs';
 
 const run = promisify(execFile);
@@ -42,7 +42,8 @@ async function audioMs(path) {
 async function capCheck(cfg, prod, model, rate, seconds) {
   if (prod.monthly_cap_usd == null) return;
   const desde = new Date(); desde.setUTCDate(1); desde.setUTCHours(0, 0, 0, 0);
-  const rows = await S.select(cfg, `ops_generation_ledger?lab=eq.${LAB}&model_id=eq.${enc(model.model_id)}` +
+  // El tope es del productor: suma todo lo que asentó ese productor en el mes, con cualquier motor o tarifa.
+  const rows = await S.select(cfg, `ops_generation_ledger?lab=eq.${LAB}&output_type=eq.video_${enc(prod.producer)}` +
     `&generated_at=gte.${enc(desde.toISOString())}&select=cost_usd`);
   const gastado = rows.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
   const estimado = seconds * Number(rate.rate_usd);
@@ -96,7 +97,20 @@ export async function renderJob(jobId, env = process.env) {
     }
     // La foto del avatar de una persona del registro sale de su ficha (person_blueprints.avatar_photo_url).
     const [person] = producer === 'avatar' && personId
-      ? await S.select(cfg, `person_blueprints?id=eq.${enc(personId)}&select=avatar_photo_url`) : [];
+      ? await S.select(cfg, `person_blueprints?id=eq.${enc(personId)}&select=avatar_photo_url,avatar_look_id`) : [];
+    // Qué anima HeyGen: el look de la ficha (gemelo) con el motor del pedido o del preset, o la foto con Avatar IV.
+    // La tarifa sale del motor y del tipo de look (ops_lab_rates), no de la fila genérica del productor.
+    let subject = null;
+    if (producer === 'avatar') {
+      const lookId = person?.avatar_look_id ?? null;
+      const look = lookId ? await heygenLook(lookId) : null;
+      subject = avatarSubject({ lookId, look, engine: params.avatar_engine ?? preset.motion?.avatar?.engine ?? null, photoModelId: model.model_id });
+      if (subject.rateModelId !== model.model_id) {
+        modelRate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: subject.rateModelId, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
+        if (!modelRate?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${subject.rateModelId} en ops_lab_rates`);
+        model = { ...model, model_id: subject.rateModelId };
+      }
+    }
     const [profile] = await S.select(cfg, `platform_format_profiles?platform=eq.${enc(params.platform)}&format=eq.reel&active=eq.true&select=*`, 'intel');
     const canvas = resolveCanvas(params.canvas ?? null, profile);
     const rate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: RATE_MODEL, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
@@ -105,7 +119,7 @@ export async function renderJob(jobId, env = process.env) {
     if (!il?.api_endpoint) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'lab_configs no tiene el api_endpoint de imagelab');
 
     // Entradas.
-    const imgs = sourceImages({ producer, personId, person, prev });
+    const imgs = sourceImages({ producer, personId, person, prev, lookImageUrl: subject?.lookImageUrl ?? null });
     const imagePaths = [];
     for (const [i, im] of imgs.entries()) {
       const p = join(work, `img${i}`);
@@ -200,7 +214,7 @@ export async function renderJob(jobId, env = process.env) {
           ? await S.select(cfg, `videolab_avatar_direction?active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=id,brand_id,category,text`)
           : [];
         avatarDirection = composeAvatarDirection({ avatar: preset.motion?.avatar ?? null, catalog, seed: jobId });
-        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: avatarAudioUrl, title: `videolab ${jobId}`, direction: avatarDirection });
+        const hg = await heygenClip({ imageUrl: frameUrl, audioUrl: avatarAudioUrl, title: `videolab ${jobId}`, direction: avatarDirection, subject });
         const p = join(work, 'clip0.mp4');
         writeFileSync(p, hg.bytes);
         clips = [p];
@@ -265,6 +279,7 @@ export async function renderJob(jobId, env = process.env) {
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
+      avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
       text_layer: layerMeta, unplaced_text: txt.unplaced,
       cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };

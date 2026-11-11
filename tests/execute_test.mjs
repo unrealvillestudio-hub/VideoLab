@@ -37,6 +37,10 @@ await caso('un pedido válido pasa; cada campo obligatorio ausente da VIDEOLAB_B
   const conPersona = PEDIDO(); delete conPersona.previousOutputs.image; conPersona.params.person_blueprint_id = 'persona-1';
   assert.equal(C.validateRequest(conPersona).params.person_blueprint_id, 'persona-1');
   assert.throws(() => C.validateRequest(null), (e) => e.label === 'VIDEOLAB_BAD_REQUEST');
+  const conMotor = PEDIDO(); conMotor.params.avatar_engine = 'avatar_v';
+  assert.equal(C.validateRequest(conMotor).params.avatar_engine, 'avatar_v');
+  const motorMalo = PEDIDO(); motorMalo.params.avatar_engine = 7;
+  assert.throws(() => C.validateRequest(motorMalo), /avatar_engine/);
 });
 
 await caso('la fila nace en running (el trigger de lab-worker sólo despacha pending y queued)', () => {

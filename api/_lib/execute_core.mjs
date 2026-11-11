@@ -42,6 +42,8 @@ export function validateRequest(body) {
   if (p.format !== 'reel') bad("params.format debe ser 'reel'");
   if (!STYLES.includes(p.video_style)) bad(`params.video_style inválido: ${p.video_style}`);
   if (p.producer != null && !PRODUCERS.includes(p.producer)) bad(`params.producer inválido: ${p.producer}`);
+  // El motor del avatar es opcional y lo valida el job contra los que admite el look de la ficha.
+  if (p.avatar_engine != null && !str(p.avatar_engine)) bad('params.avatar_engine debe ser un texto');
   if (p.duration_target_ms != null && !(Number(p.duration_target_ms) > 0)) bad('params.duration_target_ms debe ser positivo');
   if (p.canvas != null && !(obj(p.canvas) && Number(p.canvas.width) > 0 && Number(p.canvas.height) > 0)) bad('params.canvas debe traer width y height');
   if (typeof prev.voice_script !== 'string') bad('falta previousOutputs.voice_script');
