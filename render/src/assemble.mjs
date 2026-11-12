@@ -302,6 +302,6 @@ export function heygenStatus(data) {
     if (!data.video_url) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'HeyGen completó sin video_url');
     return { state: 'completed', url: data.video_url, durationS: Number(data.duration ?? 0) || null };
   }
-  if (s === 'failed') return { state: 'failed', reason: data.failure_message ?? data.error?.message ?? 'sin motivo' };
+  if (s === 'failed' || s === 'cancelled') return { state: 'failed', reason: data.failure_message ?? data.failure_code ?? data.error?.message ?? s };
   return { state: 'pending' };
 }

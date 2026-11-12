@@ -14,7 +14,8 @@ import * as S from './supa.mjs';
 import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutput, renderDurationS, RenderError, SPEC } from './plan.mjs';
 import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
-import { heygenClip, heygenLook } from './providers/heygen.mjs';
+import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
+import { planPodcast, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './podcast.mjs';
 import { brandFont } from './fonts.mjs';
 
 const run = promisify(execFile);
@@ -90,7 +91,8 @@ export async function renderJob(jobId, env = process.env) {
     }
     // Consentimiento: una persona real (person_blueprint_id) necesita el ámbito 'avatar' vigente. Sin persona del
     // registro, la persona es sintética y no se exige.
-    const personId = params.person_blueprint_id ?? null;
+    const isPodcast = params.video_style === 'podcast';
+    const personId = isPodcast ? null : (params.person_blueprint_id ?? null);
     if (producer === 'avatar' && personId) {
       const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(personId)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
       if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${personId} no tiene consentimiento vigente de avatar`);
@@ -101,7 +103,7 @@ export async function renderJob(jobId, env = process.env) {
     // Qué anima HeyGen: el look de la ficha (gemelo) con el motor del pedido o del preset, o la foto con Avatar IV.
     // La tarifa sale del motor y del tipo de look (ops_lab_rates), no de la fila genérica del productor.
     let subject = null;
-    if (producer === 'avatar') {
+    if (producer === 'avatar' && !isPodcast) {
       const lookId = person?.avatar_look_id ?? null;
       const look = lookId ? await heygenLook(lookId) : null;
       subject = avatarSubject({ lookId, look, engine: params.avatar_engine ?? preset.motion?.avatar?.engine ?? null, photoModelId: model.model_id });
@@ -118,8 +120,33 @@ export async function renderJob(jobId, env = process.env) {
     const [il] = await S.select(cfg, `lab_configs?lab_key=eq.imagelab&select=api_endpoint`);
     if (!il?.api_endpoint) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'lab_configs no tiene el api_endpoint de imagelab');
 
+    // Podcast (v1.1.0): el estudio, sus tomas y el elenco son dato; el plan se valida entero ANTES de gastar.
+    let pod = null;
+    if (isPodcast) {
+      if (producer !== 'avatar') throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el podcast se fabrica con el productor avatar');
+      const locId = params.location_blueprint_id;
+      const [loc] = locId ? await S.select(cfg, `location_blueprints?blueprint_id=eq.${enc(locId)}&active=eq.true&select=blueprint_id,raw_config`) : [];
+      if (!loc) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el estudio ${locId} no existe o no está activo`);
+      // La marca tiene que tener el estudio declarado (brand_locations). `active` es del carril, no de VideoLab.
+      const [link] = await S.select(cfg, `brand_locations?brand_id=eq.${enc(brandId)}&location_blueprint_id=eq.${enc(locId)}&select=id`);
+      if (!link) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la marca ${brandId} no tiene el estudio ${locId}`);
+      const plan = planPodcast({ catalog: catalogById(loc.raw_config?.shot_catalog), shots: prev.shots, turns: prev.turns,
+        cast: params.cast, defaultEngine: preset.motion?.avatar?.engine ?? null });
+      for (const pid of plan.speakers) {
+        const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(pid)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
+        if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${pid} no tiene consentimiento vigente de avatar`);
+      }
+      const rates = {};
+      for (const rid of Object.keys(animatedSecondsByRate(plan.segments))) {
+        rates[rid] = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: rid, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
+        if (!rates[rid]?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${rid} en ops_lab_rates`);
+      }
+      pod = { plan, rates };
+    }
+
     // Entradas.
-    const imgs = sourceImages({ producer, personId, person, prev, lookImageUrl: subject?.lookImageUrl ?? null });
+    const imgs = isPodcast ? [{ url: pod.plan.segments[0].image_url }]
+      : sourceImages({ producer, personId, person, prev, lookImageUrl: subject?.lookImageUrl ?? null });
     const imagePaths = [];
     for (const [i, im] of imgs.entries()) {
       const p = join(work, `img${i}`);
@@ -177,7 +204,65 @@ export async function renderJob(jobId, env = process.env) {
     const outPath = join(work, 'out.mp4');
     let durationS;
     const providerRows = [];
-    if (producer === 'render') {
+    if (isPodcast) {
+      // El tope del productor, con lo que va a cobrar cada motor.
+      const secs = animatedSecondsByRate(pod.plan.segments);
+      const estimado = Object.entries(secs).reduce((a, [rid, sec]) => a + sec * Number(pod.rates[rid].rate_usd), 0);
+      if (prod.monthly_cap_usd != null) {
+        const desde = new Date(); desde.setUTCDate(1); desde.setUTCHours(0, 0, 0, 0);
+        const rows = await S.select(cfg, `ops_generation_ledger?lab=eq.${LAB}&output_type=eq.video_${enc(producer)}&generated_at=gte.${enc(desde.toISOString())}&select=cost_usd`);
+        const gastado = rows.reduce((a, r) => a + Number(r.cost_usd ?? 0), 0);
+        if (gastado + estimado > Number(prod.monthly_cap_usd)) throw new RenderError('VIDEOLAB_SPEND_CAP', `${producer}: gastado ${gastado.toFixed(2)} + ${estimado.toFixed(2)} > tope ${prod.monthly_cap_usd}`);
+      }
+      const direction = preset.motion?.avatar ?? {};
+      const turnAudio = [];
+      for (const [ti, t] of prev.turns.entries()) {
+        const p = join(work, `turn${ti}.audio`);
+        writeFileSync(p, await S.download(t.voice.audio_url, `voz del turno ${ti}`));
+        turnAudio.push(p);
+      }
+      const parts = [];
+      const shotFile = new Map();
+      for (const [si, seg] of pod.plan.segments.entries()) {
+        const seconds = (seg.to_ms - seg.from_ms) / 1000;
+        const out = join(work, `seg${si}.mp4`);
+        if (seg.mode === 'animate') {
+          // El tramo de voz de este corte, subido para que HeyGen lo lea.
+          const cut = join(work, `seg${si}.mp3`);
+          await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', turnAudio[seg.turn], '-ss', (seg.from_ms / 1000).toFixed(3), '-to', (seg.to_ms / 1000).toFixed(3), '-ar', '44100', '-b:a', '160k', cut]);
+          const audioUrl = await S.upload(cfg, `${base}/seg${si}.mp3`, readFileSync(cut), 'audio/mpeg');
+          const hg = await heygenImageClip({ engine: seg.engine, imageUrl: seg.image_url, audioUrl, title: `videolab ${jobId} ${si}`, direction });
+          const clip = join(work, `seg${si}_hg.mp4`);
+          writeFileSync(clip, hg.bytes);
+          const hgS = Math.round(Number((await ffprobe(clip)).format?.duration ?? seconds) * 10) / 10;
+          providerRows.push({ model: { provider: 'heygen', model_id: seg.engine.rateModelId }, rate: pod.rates[seg.engine.rateModelId], seconds: hgS });
+          await run('ffmpeg', ['-loglevel', 'error', ...clipArgs({ clip, seconds, canvas, focusX: seg.focus_x, out })]);
+        } else {
+          if (!shotFile.has(seg.image_url)) {
+            const img = join(work, `shot${shotFile.size}`);
+            writeFileSync(img, await S.download(seg.image_url, `toma ${seg.shot_id}`));
+            shotFile.set(seg.image_url, img);
+          }
+          await run('ffmpeg', ['-loglevel', 'error', ...stillArgs({ image: shotFile.get(seg.image_url), seconds, canvas, focusX: seg.focus_x,
+            zoomPerFrame: Number(preset.motion?.podcast?.still_zoom_per_frame ?? 0.0006), out })]);
+        }
+        parts.push(out);
+      }
+      // Montaje: los cortes en orden, la voz de los turnos seguida, y la capa de texto encima si la hay.
+      const list = join(work, 'parts.txt');
+      writeFileSync(list, parts.map((x) => `file '${x}'`).join('\n'));
+      const joined = join(work, 'joined.mp4');
+      await run('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', joined]);
+      const audioIn = turnAudio.flatMap((a) => ['-i', a]);
+      const aChain = turnAudio.map((_, i) => `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo[a${i}]`).join(';');
+      const aCat = `${turnAudio.map((_, i) => `[a${i}]`).join('')}concat=n=${turnAudio.length}:v=0:a=1[aout]`;
+      const vChain = layer ? `[0:v][${turnAudio.length + 1}:v]overlay=0:0,format=yuv420p[vout]` : `[0:v]format=yuv420p[vout]`;
+      await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', joined, ...audioIn, ...(layer ? ['-i', layer] : []),
+        '-filter_complex', `${aChain};${aCat};${vChain}`, '-map', '[vout]', '-map', '[aout]',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k',
+        '-shortest', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
+      durationS = pod.plan.totalMs / 1000;
+    } else if (producer === 'render') {
       const plan = planRender({ preset, canvas, inputs: { images: imagePaths, layer, voice, music, out: outPath } });
       durationS = plan.durationS;
       await run('ffmpeg', ['-loglevel', 'error', ...plan.args], { maxBuffer: 1 << 26 });
@@ -277,6 +362,7 @@ export async function renderJob(jobId, env = process.env) {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
+      podcast: pod ? { location_blueprint_id: params.location_blueprint_id, segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,

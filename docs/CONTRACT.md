@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.0.5 (2026-11-11)
+# CONTRATO DE VIDEOLAB — v1.1.0 (2026-11-12)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -39,7 +39,7 @@ POST /api/execute
   params: {
     platform:   string,                 // p. ej. meta_ig, meta_fb, tiktok
     format:     'reel',                 // la SUPERFICIE (intel.platform_format_profiles)
-    video_style: product_showcase | product_demo | before_after | unboxing | ugc,
+    video_style: product_showcase | product_demo | before_after | unboxing | ugc | podcast,
     producer?:  render | generative | avatar,   // si falta, sale del dato de la marca
     person_blueprint_id?: string,       // UGC con persona
     avatar_engine?: string,             // motor del gemelo (avatar_iv por defecto; avatar_iii, avatar_v…)
@@ -73,6 +73,7 @@ POST /api/execute
 | `before_after` | comparación de resultado sobre dos imágenes | `render` |
 | `unboxing` | apertura del empaque | `generative` |
 | `ugc` | una persona habla a cámara | `avatar` |
+| `podcast` | una conversación en un estudio: turnos, cortes por toma, sólo quien habla se anima (§4 bis) | `avatar` |
 
 | Productor | Qué hace | Proveedor activo | Respaldo |
 |---|---|---|---|
@@ -112,6 +113,27 @@ POST /api/execute
   motor y el tipo de look (p. ej. `avatar-iv-digital-twin`); sin fila vigente, el job falla antes de llamar al proveedor.
   `motion_prompt` sólo viaja a los motores que lo admiten y `expressiveness` sólo a una foto con Avatar IV. Sin foto en la
   ficha, la imagen del gemelo sirve para colocar el texto. Sin `avatar_look_id`, todo sigue como en v1.0.4.
+
+## 4 bis. Podcast (v1.1.0, decisión de Sam 2026-11-11)
+
+- **El estudio es dato:** `params.location_blueprint_id` apunta a `location_blueprints`; su `raw_config.shot_catalog` declara
+  las tomas (`id`, `aspect`, y `animate` = la silla que esa toma anima, o `null`). La marca debe tener el estudio en
+  `brand_locations` (su `active` es del carril, no de VideoLab). El elenco del episodio es `params.cast` (silla → persona).
+- **Las tomas las hace ImageLab, una vez por episodio, con las personas dentro**, y llegan en `previousOutputs.shots`
+  (`shot_id`, `url`, `focus_x` opcional para recortar una toma 16:9 al lienzo vertical).
+- **Turnos:** `previousOutputs.turns` = `[{ seat, voice: { audio_url, duration_ms }, engine?, cuts: [{ shot_id, at_ms }] }]`.
+  Cada corte dura hasta el siguiente o hasta el final de la voz del turno.
+- **Regla de animación:** se anima **sólo a quien habla y sólo en una toma cuyo `animate` es su silla** (está sola en
+  cuadro). Cualquier otro corte es la imagen fija con un acercamiento lento. Sin máscaras: nadie que escucha se anima.
+  Un turno sin ningún corte animado → `VIDEOLAB_BAD_REQUEST`.
+- **Motores por imagen:** `avatar_iv` (`POST /v3/videos`, `type: image`), `heygen-avatar-6` y `heygen-avatar-6-turbo`
+  (`POST /v3/models/avatars`). El motor sale de `turn.engine`, si no de `motion.avatar.engine` del preset, si no `avatar_iv`.
+  La tarifa es la fila del motor en `ops_lab_rates` (`avatar-iv`, `heygen-avatar-6`, `heygen-avatar-6-turbo`).
+- **Consentimiento:** cada persona que habla necesita `avatar` vigente en `person_consents`.
+- **Costo:** el tope del productor `avatar` se comprueba con la suma de todos los cortes animados antes de llamar; cada
+  llamada a HeyGen asienta su fila.
+- **Montaje:** los cortes en orden, la voz de los turnos seguida, y la capa de texto de ImageLab encima si hay titular.
+  La salida suma `podcast: { location_blueprint_id, segments }`.
 
 ## 5. Salida
 

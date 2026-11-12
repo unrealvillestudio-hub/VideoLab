@@ -15,7 +15,7 @@ export const RUN_REGION = 'us-central1';
 export const RUN_JOB = 'videolab-render';
 export const INITIAL_STATUS = 'running';
 
-const STYLES = ['product_showcase', 'product_demo', 'before_after', 'unboxing', 'ugc'];
+const STYLES = ['product_showcase', 'product_demo', 'before_after', 'unboxing', 'ugc', 'podcast'];
 const PRODUCERS = ['render', 'generative', 'avatar'];
 const ROLES = ['headline', 'subheadline', 'cta'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,6 +51,17 @@ export function validateRequest(body) {
   prev.on_screen_text.forEach((t, i) => {
     if (!obj(t) || typeof t.text !== 'string' || !ROLES.includes(t.role)) bad(`on_screen_text[${i}] necesita text y role (headline | subheadline | cta)`);
   });
+  // Podcast (v1.1.0): estudio, elenco, tomas y turnos. El job los valida contra el dato del estudio.
+  if (p.video_style === 'podcast') {
+    if (!str(p.location_blueprint_id)) bad('el podcast necesita params.location_blueprint_id (el estudio)');
+    if (!obj(p.cast) || !Object.values(p.cast).some(str)) bad('el podcast necesita params.cast (silla → persona)');
+    if (!Array.isArray(prev.shots) || !prev.shots.length) bad('el podcast necesita previousOutputs.shots (las tomas del episodio)');
+    if (!Array.isArray(prev.turns) || !prev.turns.length) bad('el podcast necesita previousOutputs.turns');
+    prev.turns.forEach((t, i) => {
+      if (!obj(t) || !str(t.seat) || !str(t.voice?.audio_url) || !Array.isArray(t.cuts) || !t.cuts.length) bad(`turns[${i}] necesita seat, voice.audio_url y cuts`);
+    });
+    return body;
+  }
   const hasImage = str(prev.image?.url) || (Array.isArray(prev.images) && prev.images.some((x) => str(x?.url)));
   // Con una persona del registro, la imagen del avatar sale de su ficha; si no, el pedido la trae.
   if (!hasImage && !str(p.person_blueprint_id)) bad('previousOutputs no trae imagen (image.url o images[].url)');
