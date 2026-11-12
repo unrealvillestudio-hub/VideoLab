@@ -15,7 +15,7 @@ import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutp
 import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
-import { planPodcast, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './podcast.mjs';
+import { planConversation, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './conversation.mjs';
 import { brandFont } from './fonts.mjs';
 
 const run = promisify(execFile);
@@ -91,8 +91,8 @@ export async function renderJob(jobId, env = process.env) {
     }
     // Consentimiento: una persona real (person_blueprint_id) necesita el ámbito 'avatar' vigente. Sin persona del
     // registro, la persona es sintética y no se exige.
-    const isPodcast = params.video_style === 'podcast';
-    const personId = isPodcast ? null : (params.person_blueprint_id ?? null);
+    const isConversation = params.video_style === 'conversation';
+    const personId = isConversation ? null : (params.person_blueprint_id ?? null);
     if (producer === 'avatar' && personId) {
       const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(personId)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
       if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${personId} no tiene consentimiento vigente de avatar`);
@@ -103,7 +103,7 @@ export async function renderJob(jobId, env = process.env) {
     // Qué anima HeyGen: el look de la ficha (gemelo) con el motor del pedido o del preset, o la foto con Avatar IV.
     // La tarifa sale del motor y del tipo de look (ops_lab_rates), no de la fila genérica del productor.
     let subject = null;
-    if (producer === 'avatar' && !isPodcast) {
+    if (producer === 'avatar' && !isConversation) {
       const lookId = person?.avatar_look_id ?? null;
       const look = lookId ? await heygenLook(lookId) : null;
       subject = avatarSubject({ lookId, look, engine: params.avatar_engine ?? preset.motion?.avatar?.engine ?? null, photoModelId: model.model_id });
@@ -120,18 +120,25 @@ export async function renderJob(jobId, env = process.env) {
     const [il] = await S.select(cfg, `lab_configs?lab_key=eq.imagelab&select=api_endpoint`);
     if (!il?.api_endpoint) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'lab_configs no tiene el api_endpoint de imagelab');
 
-    // Podcast (v1.1.0): el estudio, sus tomas y el elenco son dato; el plan se valida entero ANTES de gastar.
+    // Conversación (v1.1.0): el estudio, sus tomas y el elenco son dato; el plan se valida entero ANTES de gastar.
     let pod = null;
-    if (isPodcast) {
-      if (producer !== 'avatar') throw new RenderError('VIDEOLAB_BAD_REQUEST', 'el podcast se fabrica con el productor avatar');
+    if (isConversation) {
+      if (producer !== 'avatar') throw new RenderError('VIDEOLAB_BAD_REQUEST', 'la conversación se fabrica con el productor avatar');
       const locId = params.location_blueprint_id;
       const [loc] = locId ? await S.select(cfg, `location_blueprints?blueprint_id=eq.${enc(locId)}&active=eq.true&select=blueprint_id,raw_config`) : [];
       if (!loc) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el estudio ${locId} no existe o no está activo`);
       // La marca tiene que tener el estudio declarado (brand_locations). `active` es del carril, no de VideoLab.
       const [link] = await S.select(cfg, `brand_locations?brand_id=eq.${enc(brandId)}&location_blueprint_id=eq.${enc(locId)}&select=id`);
       if (!link) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la marca ${brandId} no tiene el estudio ${locId}`);
-      const plan = planPodcast({ catalog: catalogById(loc.raw_config?.shot_catalog), shots: prev.shots, turns: prev.turns,
-        cast: params.cast, defaultEngine: preset.motion?.avatar?.engine ?? null });
+      // La técnica de escena (v1.2.0): dato de videolab_scene_techniques, validado por Sam en el skill audiovisual-techniques.
+      let technique = null;
+      if (params.technique_id) {
+        [technique] = await S.select(cfg, `videolab_scene_techniques?technique_id=eq.${enc(params.technique_id)}&active=eq.true&select=*`);
+        if (!technique) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la técnica ${params.technique_id} no existe o no está activa`);
+        if (technique.video_style !== params.video_style) throw new RenderError('VIDEOLAB_BAD_REQUEST', `la técnica ${params.technique_id} es del estilo ${technique.video_style}`);
+      }
+      const plan = planConversation({ catalog: catalogById(loc.raw_config?.shot_catalog), shots: prev.shots, turns: prev.turns,
+        cast: params.cast, defaultEngine: preset.motion?.avatar?.engine ?? null, technique });
       for (const pid of plan.speakers) {
         const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(pid)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
         if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${pid} no tiene consentimiento vigente de avatar`);
@@ -145,7 +152,7 @@ export async function renderJob(jobId, env = process.env) {
     }
 
     // Entradas.
-    const imgs = isPodcast ? [{ url: pod.plan.segments[0].image_url }]
+    const imgs = isConversation ? [{ url: pod.plan.segments[0].image_url }]
       : sourceImages({ producer, personId, person, prev, lookImageUrl: subject?.lookImageUrl ?? null });
     const imagePaths = [];
     for (const [i, im] of imgs.entries()) {
@@ -204,7 +211,7 @@ export async function renderJob(jobId, env = process.env) {
     const outPath = join(work, 'out.mp4');
     let durationS;
     const providerRows = [];
-    if (isPodcast) {
+    if (isConversation) {
       // El tope del productor, con lo que va a cobrar cada motor.
       const secs = animatedSecondsByRate(pod.plan.segments);
       const estimado = Object.entries(secs).reduce((a, [rid, sec]) => a + sec * Number(pod.rates[rid].rate_usd), 0);
@@ -236,7 +243,7 @@ export async function renderJob(jobId, env = process.env) {
           writeFileSync(clip, hg.bytes);
           const hgS = Math.round(Number((await ffprobe(clip)).format?.duration ?? seconds) * 10) / 10;
           providerRows.push({ model: { provider: 'heygen', model_id: seg.engine.rateModelId }, rate: pod.rates[seg.engine.rateModelId], seconds: hgS });
-          await run('ffmpeg', ['-loglevel', 'error', ...clipArgs({ clip, seconds, canvas, focusX: seg.focus_x, out })]);
+          await run('ffmpeg', ['-loglevel', 'error', ...clipArgs({ clip, seconds, canvas, focusX: seg.focus_x, move: seg.move, out })]);
         } else {
           if (!shotFile.has(seg.image_url)) {
             const img = join(work, `shot${shotFile.size}`);
@@ -244,7 +251,7 @@ export async function renderJob(jobId, env = process.env) {
             shotFile.set(seg.image_url, img);
           }
           await run('ffmpeg', ['-loglevel', 'error', ...stillArgs({ image: shotFile.get(seg.image_url), seconds, canvas, focusX: seg.focus_x,
-            zoomPerFrame: Number(preset.motion?.podcast?.still_zoom_per_frame ?? 0.0006), out })]);
+            zoomPerFrame: Number(preset.motion?.conversation?.still_zoom_per_frame ?? 0.0006), out })]);
         }
         parts.push(out);
       }
@@ -362,7 +369,7 @@ export async function renderJob(jobId, env = process.env) {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
-      podcast: pod ? { location_blueprint_id: params.location_blueprint_id, segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
+      conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,

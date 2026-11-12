@@ -1,4 +1,4 @@
-# CONTRATO DE VIDEOLAB — v1.1.0 (2026-11-12)
+# CONTRATO DE VIDEOLAB — v1.2.0 (2026-11-12)
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
@@ -39,7 +39,7 @@ POST /api/execute
   params: {
     platform:   string,                 // p. ej. meta_ig, meta_fb, tiktok
     format:     'reel',                 // la SUPERFICIE (intel.platform_format_profiles)
-    video_style: product_showcase | product_demo | before_after | unboxing | ugc | podcast,
+    video_style: product_showcase | product_demo | before_after | unboxing | ugc | conversation,
     producer?:  render | generative | avatar,   // si falta, sale del dato de la marca
     person_blueprint_id?: string,       // UGC con persona
     avatar_engine?: string,             // motor del gemelo (avatar_iv por defecto; avatar_iii, avatar_v…)
@@ -73,7 +73,7 @@ POST /api/execute
 | `before_after` | comparación de resultado sobre dos imágenes | `render` |
 | `unboxing` | apertura del empaque | `generative` |
 | `ugc` | una persona habla a cámara | `avatar` |
-| `podcast` | una conversación en un estudio: turnos, cortes por toma, sólo quien habla se anima (§4 bis) | `avatar` |
+| `conversation` | una conversación en un set: turnos, cortes por toma, sólo quien habla se anima (§4 bis) | `avatar` |
 
 | Productor | Qué hace | Proveedor activo | Respaldo |
 |---|---|---|---|
@@ -114,7 +114,7 @@ POST /api/execute
   `motion_prompt` sólo viaja a los motores que lo admiten y `expressiveness` sólo a una foto con Avatar IV. Sin foto en la
   ficha, la imagen del gemelo sirve para colocar el texto. Sin `avatar_look_id`, todo sigue como en v1.0.4.
 
-## 4 bis. Podcast (v1.1.0, decisión de Sam 2026-11-11)
+## 4 bis. Conversación — `conversation` (v1.1.0 y v1.2.0, decisiones de Sam 2026-11-11 y 2026-11-12)
 
 - **El estudio es dato:** `params.location_blueprint_id` apunta a `location_blueprints`; su `raw_config.shot_catalog` declara
   las tomas (`id`, `aspect`, y `animate` = la silla que esa toma anima, o `null`). La marca debe tener el estudio en
@@ -132,6 +132,12 @@ POST /api/execute
 - **Consentimiento:** cada persona que habla necesita `avatar` vigente en `person_consents`.
 - **Costo:** el tope del productor `avatar` se comprueba con la suma de todos los cortes animados antes de llamar; cada
   llamada a HeyGen asienta su fila.
+- **Técnicas de escena (v1.2.0).** `params.technique_id` nombra una técnica de `public.videolab_scene_techniques`
+  (validada por Sam en `skills/audiovisual-techniques`). Con ella, un turno **puede llegar sin cortes**: VideoLab los
+  arma recorriendo `cut_plan.sequence` (roles de cámara relativos a quien habla: `speaker`, `listener`, `wide`, cada uno
+  con encuadres preferidos del `framing` de la toma), con `cut_plan.cut_ms` y `min_cut_ms`. `moves.speaker` (`drift`)
+  aplica un reencuadre y paneo lentos a los cortes animados. Una técnica de otro estilo, inactiva o inexistente →
+  `VIDEOLAB_BAD_REQUEST`. Una técnica nueva es una fila, no código. La salida dice `technique_id` y los segmentos.
 - **Montaje:** los cortes en orden, la voz de los turnos seguida, y la capa de texto de ImageLab encima si hay titular.
   La salida suma `podcast: { location_blueprint_id, segments }`.
 

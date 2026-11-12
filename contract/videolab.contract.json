@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "date": "2026-11-07",
   "lab": "videolab",
   "transport": {
@@ -63,7 +63,7 @@
     "before_after",
     "unboxing",
     "ugc",
-    "podcast"
+    "conversation"
   ],
   "producers": [
     "render",
@@ -117,22 +117,24 @@
     "VIDEOLAB_OUTPUT_INVALID",
     "VIDEOLAB_TIMEOUT"
   ],
-  "podcast": {
+  "conversation": {
     "params": {
       "location_blueprint_id": "string (location_blueprints.blueprint_id; la marca debe tenerlo en brand_locations)",
-      "cast": "{ silla: person_blueprint_id }"
+      "cast": "{ silla: person_blueprint_id }",
+      "technique_id": "string opcional (public.videolab_scene_techniques.technique_id): sin cortes en los turnos, la técnica los arma"
     },
     "previousOutputs": {
       "shots": "[{ shot_id, url, focus_x? }] — una imagen por toma del catálogo del estudio, generada por ImageLab con las personas dentro",
-      "turns": "[{ seat, voice: { audio_url, duration_ms }, engine?, cuts: [{ shot_id, at_ms }] }] — at_ms relativo al turno; el primero en 0"
+      "turns": "[{ seat, voice: { audio_url, duration_ms }, engine?, cuts?: [{ shot_id, at_ms }] }] — at_ms relativo al turno; el primero en 0"
     },
     "rules": [
       "Se anima sólo a quien habla y sólo en una toma cuyo `animate` es su silla; el resto de los cortes es fijo con acercamiento lento.",
       "Cada turno necesita al menos un corte animado.",
       "Motores por imagen: avatar_iv (por defecto o motion.avatar.engine), heygen-avatar-6, heygen-avatar-6-turbo.",
       "Cada persona que habla necesita consentimiento vigente de avatar.",
-      "Un asiento en ops_generation_ledger por cada llamada a HeyGen, con la tarifa de su motor."
+      "Un asiento en ops_generation_ledger por cada llamada a HeyGen, con la tarifa de su motor.",
+      "Con technique_id, los cortes siguen cut_plan.sequence (roles speaker | listener | wide, con framing preferido) y moves.speaker mueve la cámara de quien habla."
     ],
-    "output": "output_parsed.podcast = { location_blueprint_id, segments: [{ turn, seat, shot_id, mode, start_ms, ms, engine }] }"
+    "output": "output_parsed.conversation = { location_blueprint_id, technique_id, segments: [{ turn, seat, shot_id, mode, start_ms, ms, engine }] }"
   }
 }

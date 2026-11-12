@@ -2,7 +2,7 @@
 // La clave llega por HEYGEN_API_KEY (Secret Manager). Sin ella, falla nombrándola.
 import { heygenRequestBody, heygenStatus } from '../assemble.mjs';
 import { RenderError } from '../plan.mjs';
-import { podcastHeygenBody } from '../podcast.mjs';
+import { conversationHeygenBody } from '../conversation.mjs';
 
 const BASE = 'https://api.heygen.com';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -51,7 +51,7 @@ export async function heygenImageClip({ engine, imageUrl, audioUrl, title, direc
   const h = headers();
   const isModel = engine.api === 'models';
   const res = await fetch(`${BASE}${isModel ? '/v3/models/avatars' : '/v3/videos'}`, { method: 'POST', headers: h,
-    body: JSON.stringify(podcastHeygenBody({ engine, imageUrl, audioUrl, title, direction })) });
+    body: JSON.stringify(conversationHeygenBody({ engine, imageUrl, audioUrl, title, direction })) });
   const body = await res.json().catch(() => ({}));
   const id = body?.data?.video_id;
   if (!res.ok || !id) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `HeyGen ${engine.engine} ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
