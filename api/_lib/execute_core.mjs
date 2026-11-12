@@ -15,7 +15,7 @@ export const RUN_REGION = 'us-central1';
 export const RUN_JOB = 'videolab-render';
 export const INITIAL_STATUS = 'running';
 
-const STYLES = ['product_showcase', 'product_demo', 'before_after', 'unboxing', 'ugc'];
+const STYLES = ['product_showcase', 'product_demo', 'before_after', 'unboxing', 'ugc', 'conversation'];
 const PRODUCERS = ['render', 'generative', 'avatar'];
 const ROLES = ['headline', 'subheadline', 'cta'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,6 +51,21 @@ export function validateRequest(body) {
   prev.on_screen_text.forEach((t, i) => {
     if (!obj(t) || typeof t.text !== 'string' || !ROLES.includes(t.role)) bad(`on_screen_text[${i}] necesita text y role (headline | subheadline | cta)`);
   });
+  // Conversación (v1.1.0): estudio, elenco, tomas y turnos. El job los valida contra el dato del estudio.
+  if (p.video_style === 'conversation') {
+    if (p.technique_id != null && !str(p.technique_id)) bad('params.technique_id debe ser un texto');
+    if (!str(p.location_blueprint_id)) bad('la conversación necesita params.location_blueprint_id (el estudio)');
+    if (!obj(p.cast) || !Object.values(p.cast).some(str)) bad('la conversación necesita params.cast (silla → persona)');
+    if (!Array.isArray(prev.shots) || !prev.shots.length) bad('la conversación necesita previousOutputs.shots (las tomas del episodio)');
+    if (!Array.isArray(prev.turns) || !prev.turns.length) bad('la conversación necesita previousOutputs.turns');
+    prev.turns.forEach((t, i) => {
+      if (!obj(t) || !str(t.seat) || !str(t.voice?.audio_url)) bad(`turns[${i}] necesita seat y voice.audio_url`);
+      // Los cortes los trae el pedido o los arma la técnica (params.technique_id, v1.2.0).
+      const hasCuts = Array.isArray(t.cuts) && t.cuts.length > 0;
+      if (!hasCuts && !str(p.technique_id)) bad(`turns[${i}] necesita cuts o params.technique_id`);
+    });
+    return body;
+  }
   const hasImage = str(prev.image?.url) || (Array.isArray(prev.images) && prev.images.some((x) => str(x?.url)));
   // Con una persona del registro, la imagen del avatar sale de su ficha; si no, el pedido la trae.
   if (!hasImage && !str(p.person_blueprint_id)) bad('previousOutputs no trae imagen (image.url o images[].url)');
