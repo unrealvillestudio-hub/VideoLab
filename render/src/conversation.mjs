@@ -201,3 +201,19 @@ export function speakerMoveFilter(move, canvas) {
   const cw = Math.round(W * (1 - amp)) & ~1, ch = Math.round(H * (1 - amp)) & ~1;
   return `crop=${cw}:${ch}:(iw-${cw})/2*(1+sin(2*PI*t/${period})):(ih-${ch})/2,scale=${W}:${H},setsar=1`;
 }
+
+/**
+ * Quién necesita consentimiento de avatar entre quienes hablan (contrato §4: «si es real o sintética es dato»).
+ * `people` = filas de `person_blueprints` ({ id, person_kind }). Una persona `synthetic` no tiene a nadie que consienta;
+ * `real` o sin marcar (NULL) sí lo necesita: el lado seguro. Quien habla y no está en el registro → VIDEOLAB_BAD_REQUEST.
+ * PURO.
+ */
+export function speakersNeedingConsent(speakers, people) {
+  const byId = new Map((people ?? []).map((p) => [p.id, p]));
+  const missing = speakers.filter((pid) => !byId.has(pid));
+  if (missing.length) bad(`params.cast nombra personas que no están en person_blueprints: ${missing.join(', ')}`);
+  return {
+    need: speakers.filter((pid) => byId.get(pid).person_kind !== 'synthetic'),
+    synthetic: speakers.filter((pid) => byId.get(pid).person_kind === 'synthetic'),
+  };
+}

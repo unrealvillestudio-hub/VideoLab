@@ -138,6 +138,10 @@ POST /api/execute
   (`POST /v3/models/avatars`). El motor sale de `turn.engine`, si no de `motion.avatar.engine` del preset, si no `avatar_iv`.
   La tarifa es la fila del motor en `ops_lab_rates` (`avatar-iv`, `heygen-avatar-6`, `heygen-avatar-6-turbo`).
 - **Consentimiento:** cada persona que habla necesita `avatar` vigente en `person_consents`.
+  **v1.3.1 (2026-11-16):** salvo que su ficha diga `person_kind = 'synthetic'` (`person_blueprints`, migración
+  `20261116153000` de unrlvl-iid-functions): una persona sintética no tiene a nadie que consienta. `real` o sin marcar
+  (NULL) la sigue necesitando. Quien habla y no está en `person_blueprints` → `VIDEOLAB_BAD_REQUEST`. La salida dice
+  `conversation.synthetic_speakers`.
 - **Costo:** el tope del productor `avatar` se comprueba con la suma de todos los cortes animados antes de llamar; cada
   llamada a HeyGen asienta su fila.
 - **Técnicas de escena (v1.2.0).** `params.technique_id` nombra una técnica de `public.videolab_scene_techniques`
