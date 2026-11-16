@@ -40,7 +40,7 @@ const covers = (face, target) => dist(face, target) === 0;
  *   engrosa (negrita sintética), y la medida lo sabe.
  * PURO.
  */
-export function pickFaces(faces, { family, bold = false } = {}) {
+export function pickFaces(faces, { family, bold = false, italic = false } = {}) {
   const normal = (faces ?? []).filter((f) => f.style === 'normal');
   if (!normal.length) {
     throw new RenderError('VIDEOLAB_BAD_REQUEST',
@@ -48,7 +48,11 @@ export function pickFaces(faces, { family, bold = false } = {}) {
   }
   const regular = [...normal].sort((a, b) => dist(a, REGULAR_WEIGHT) - dist(b, REGULAR_WEIGHT) || b.weight[0] - a.weight[0])[0];
   const strong = bold ? normal.find((f) => covers(f, BOLD_WEIGHT)) ?? null : null;
-  return { regular, bold: strong && strong.url !== regular.url ? strong : null };
+  // v1.4.0 (`italic_spans`): la cursiva más cercana a 400. Si la familia no la ofrece, null: el texto se inclina
+  // (cursiva sintética, como ImageLab) y se avisa.
+  const slanted = italic ? [...(faces ?? []).filter((f) => f.style === 'italic')]
+    .sort((a, b) => dist(a, REGULAR_WEIGHT) - dist(b, REGULAR_WEIGHT) || b.weight[0] - a.weight[0])[0] ?? null : null;
+  return { regular, bold: strong && strong.url !== regular.url ? strong : null, italic: slanted };
 }
 
 const fileName = (family, weight, ext) => `${family.replace(/[^A-Za-z0-9]+/g, '_')}-${weight}.${ext}`;
@@ -65,17 +69,18 @@ async function download(face, family, weight, dir) {
  * Baja al directorio las caras de la familia que el pedido dibuja: la regular siempre y la negrita real si `bold` y el
  * CSS la ofrece. Devuelve { dir, regular: { file, weight }, bold: { file, weight } | null }.
  */
-export async function brandFontFaces({ cssImport, family, dir, bold = false }) {
+export async function brandFontFaces({ cssImport, family, dir, bold = false, italic = false }) {
   if (!cssImport || !family) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'la marca no declara tipografía para el texto en pantalla');
   const css = await (await fetch(cssImport, { headers: { 'User-Agent': 'Mozilla/4.0 (videolab-render)' } })).text();
   const faces = parseFontFaces(css);
   if (!faces.length) throw new RenderError('VIDEOLAB_BAD_REQUEST', `css_import de ${family} no ofrece TTF/OTF`);
-  const pick = pickFaces(faces, { family, bold });
+  const pick = pickFaces(faces, { family, bold, italic });
   mkdirSync(dir, { recursive: true });
   const rw = covers(pick.regular, REGULAR_WEIGHT) ? REGULAR_WEIGHT : pick.regular.weight[0];
   const regular = { file: await download(pick.regular, family, rw, dir), weight: rw };
   const strong = pick.bold ? { file: await download(pick.bold, family, BOLD_WEIGHT, dir), weight: BOLD_WEIGHT } : null;
-  return { dir, regular, bold: strong };
+  const slanted = pick.italic ? { file: await download(pick.italic, family, `${REGULAR_WEIGHT}i`, dir), weight: REGULAR_WEIGHT, style: 'italic' } : null;
+  return { dir, regular, bold: strong, italic: slanted };
 }
 
 export async function brandFont({ cssImport, family, dir, bold = false }) {

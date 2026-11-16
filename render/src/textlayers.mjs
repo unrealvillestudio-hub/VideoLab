@@ -76,6 +76,91 @@ export function validatePlace(p, where, { zoomOnly = false } = {}) {
   }
 }
 
+// 2026-11-16 — ESTILOS EN LÍNEA Y ALINEACIÓN (contrato v1.4.0; mismo vocabulario que ImageLab `text_style.<bloque>`,
+// medido en ImageLab api/compose.ts 78c3fb1). Tramos LITERALES del texto del bloque: `emphasis` (resaltado: color del
+// resaltado), `italic_spans` (invierte la cursiva), `bold_spans` (invierte el peso), `color_spans` (sólo color, el del
+// resaltado). Hasta SPAN_MAX_TERMS tramos de ≤ SPAN_MAX_CHARS caracteres por campo, como en ImageLab.
+// `emphasis_role`: rol de brand_palette para el color del resaltado del bloque. `align`: left | center | right.
+export const SPAN_FIELDS = Object.freeze(['emphasis', 'italic_spans', 'bold_spans', 'color_spans']);
+export const SPAN_MAX_TERMS = 3;
+export const SPAN_MAX_CHARS = 60;
+export const ALIGNS = Object.freeze(['left', 'center', 'right']);
+export const IDENTITY_MODES = Object.freeze(['none', 'edge_left', 'edge_right', 'edge_bottom']);
+const ROLE_NAME = /^[a-z0-9_]+$/;
+
+/** Valida los campos de estilo de un bloque. `alignable`: el bloque acepta `align` (el rol no). PURO. */
+export function validateBlockStyle(b, where, { alignable = true } = {}) {
+  for (const f of SPAN_FIELDS) {
+    const v = b[f];
+    if (v == null) continue;
+    if (!Array.isArray(v)) bad(`${where}.${f} debe ser una lista de tramos literales del texto`);
+    if (v.length > SPAN_MAX_TERMS) bad(`${where}.${f} trae ${v.length} tramos; el máximo es ${SPAN_MAX_TERMS}`);
+    v.forEach((x, k) => {
+      if (!str(x)) bad(`${where}.${f}[${k}] debe ser texto no vacío`);
+      if (String(x).length > SPAN_MAX_CHARS) bad(`${where}.${f}[${k}] excede ${SPAN_MAX_CHARS} caracteres`);
+    });
+  }
+  if (b.emphasis_role != null && !(typeof b.emphasis_role === 'string' && ROLE_NAME.test(b.emphasis_role))) {
+    bad(`${where}.emphasis_role debe ser el nombre de un rol de brand_palette (minúsculas, números y guion bajo)`);
+  }
+  if (b.align != null) {
+    if (!alignable) bad(`${where}.align no aplica: el rol va siempre alineado a la izquierda`);
+    if (!ALIGNS.includes(b.align)) bad(`${where}.align debe ser ${ALIGNS.join(' | ')}`);
+  }
+}
+
+/**
+ * Parte `text` en tramos alrededor de VARIAS subcadenas literales: cada término marca su primera aparición que no
+ * se solape con un término anterior (el orden de la lista es la prioridad). Mismo algoritmo que `splitEmphasis` de
+ * ImageLab. Devuelve { ranges: [[a, b]], found, missing }. PURO.
+ */
+export function literalRanges(text, terms) {
+  const h = String(text ?? '');
+  const ranges = [], found = [], missing = [];
+  for (const k of terms ?? []) {
+    if (!k) continue;
+    let from = 0, at = -1;
+    while (from <= h.length) {
+      const i = h.indexOf(k, from);
+      if (i < 0) break;
+      if (!ranges.some(([a, b]) => i < b && i + k.length > a)) { at = i; break; }
+      from = i + 1;
+    }
+    if (at < 0) { missing.push(k); continue; }
+    ranges.push([at, at + k.length]);
+    found.push(k);
+  }
+  return { ranges: ranges.sort((a, b) => a[0] - b[0]), found, missing };
+}
+
+/**
+ * Estilo de cada carácter del texto del bloque: [{ emphasis, italic, bold, color }] (booleanos: el tramo lo pide).
+ * Un término de `emphasis` que no está literal se busca, como antes de v1.4.0, por palabra normalizada (sin
+ * puntuación ni mayúsculas), para no cambiar las piezas que ya existen. Lo que no se encuentra va a `missing`. PURO.
+ */
+export function charStyles(text, block) {
+  const t = String(text ?? '');
+  const flags = Array.from({ length: t.length }, () => ({ emphasis: false, italic: false, bold: false, color: false }));
+  const missing = [];
+  const mark = (field, key) => {
+    const { ranges, missing: miss } = literalRanges(t, block?.[field] ?? []);
+    for (const [a, b] of ranges) for (let i = a; i < b; i++) flags[i][key] = true;
+    for (const m of miss) {
+      if (field === 'emphasis') {
+        const target = norm(m);
+        let hit = false;
+        for (const w of t.matchAll(/\S+/g)) {
+          if (target && norm(w[0]) === target) { for (let i = w.index; i < w.index + w[0].length; i++) flags[i].emphasis = true; hit = true; }
+        }
+        if (hit) continue;
+      }
+      missing.push({ field, term: m });
+    }
+  };
+  mark('emphasis', 'emphasis'); mark('italic_spans', 'italic'); mark('bold_spans', 'bold'); mark('color_spans', 'color');
+  return { flags, missing };
+}
+
 export function validateTextLayers(tl, { words = null } = {}) {
   if (!obj(tl)) bad('text_layers debe ser un objeto');
   const key = (v, where) => { if (!str(v)) bad(`${where}.preset_key vacío`); };
@@ -87,7 +172,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
     txt(h.text, 'hook'); key(h.preset_key, 'hook');
     if (!nonNeg(h.start_ms)) bad('hook.start_ms debe ser ≥ 0');
     if (!(nonNeg(h.end_ms) && Number(h.end_ms) > Number(h.start_ms))) bad('hook.end_ms debe ser mayor que start_ms');
-    if (h.emphasis != null && !(Array.isArray(h.emphasis) && h.emphasis.every(str))) bad('hook.emphasis debe ser una lista de textos');
+    validateBlockStyle(h, 'hook');
     validatePlace(h.place, 'hook');
     layers++;
   }
@@ -100,6 +185,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
       txt(r.text, `roles[${i}]`); key(r.preset_key, `roles[${i}]`);
       if (!nonNeg(r.at_ms)) bad(`roles[${i}].at_ms debe ser ≥ 0`);
       if (!pos(r.dur_ms)) bad(`roles[${i}].dur_ms debe ser > 0`);
+      validateBlockStyle(r, `roles[${i}]`, { alignable: false });
       validatePlace(r.place, `roles[${i}]`);
       layers++;
     });
@@ -122,6 +208,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
       txt(k.text, `key_titles[${i}]`); key(k.preset_key, `key_titles[${i}]`);
       if (!nonNeg(k.at_ms)) bad(`key_titles[${i}].at_ms debe ser ≥ 0`);
       if (!pos(k.dur_ms)) bad(`key_titles[${i}].dur_ms debe ser > 0`);
+      validateBlockStyle(k, `key_titles[${i}]`);
       validatePlace(k.place, `key_titles[${i}]`);
       layers++;
     });
@@ -132,17 +219,38 @@ export function validateTextLayers(tl, { words = null } = {}) {
     txt(c.text, 'cta'); key(c.preset_key, 'cta');
     if (!nonNeg(c.at_ms)) bad('cta.at_ms debe ser ≥ 0');
     if (c.dur_ms != null && !pos(c.dur_ms)) bad('cta.dur_ms debe ser > 0');
+    validateBlockStyle(c, 'cta');
     validatePlace(c.place, 'cta');
     layers++;
   }
   if (tl.identity != null) {
     const d = tl.identity;
     if (!obj(d)) bad('text_layers.identity debe ser un objeto o null');
-    if (d.strip_role != null && !str(d.strip_role)) bad('identity.strip_role debe ser un rol de brand_palette');
+    // v1.4.0: `identity_role` (nombre de ImageLab) manda; `strip_role` queda como ALIAS LEGACY documentado (contrato
+    // §10, v1.4.0), con retiro en un PR posterior cuando ningún pedido lo use.
+    for (const k of ['identity_role', 'strip_role']) {
+      if (d[k] != null && !(typeof d[k] === 'string' && ROLE_NAME.test(d[k]))) bad(`identity.${k} debe ser el nombre de un rol de brand_palette`);
+    }
+    if (d.identity_role != null && d.strip_role != null && d.identity_role !== d.strip_role) bad('identity.identity_role y identity.strip_role (alias) dicen roles distintos');
     if (d.strip === true) layers++;
   }
   if (!layers) bad('text_layers no pide ninguna capa');
   return tl;
+}
+
+// v1.4.0 — MOTOR DE DIBUJO, eje del sistema: `spec.engine` del preset. 'ass' (libass, por defecto y respaldo) o 'html'
+// (motor HTML propio, render/src/html/). Es dato del preset, nunca de una marca.
+export const TEXT_ENGINES = Object.freeze(['ass', 'html']);
+
+/** El motor del pedido: 'html' si algún preset que usa lo declara; si no, 'ass'. PURO. */
+export function engineOf(tl, rows, brandId) {
+  const used = [];
+  if (tl?.hook) used.push([tl.hook.preset_key, 'hook']);
+  for (const r of tl?.roles ?? []) if (r?.show !== false) used.push([r.preset_key, 'role']);
+  if (tl?.captions && tl.captions.enabled !== false) used.push([tl.captions.preset_key, 'caption']);
+  for (const k of tl?.key_titles ?? []) used.push([k.preset_key, 'key_title']);
+  if (tl?.cta) used.push([tl.cta.preset_key, 'cta']);
+  return used.some(([key, layer]) => resolveTextPreset(rows, key, brandId, layer).spec.engine === 'html') ? 'html' : 'ass';
 }
 
 /** Las `preset_key` que usa el pedido, sin repetir. PURO. */
@@ -171,6 +279,7 @@ export function resolveTextPreset(rows, key, brandId, layer) {
   if (layer && row.layer !== layer) bad(`el preset ${key} es de la capa ${row.layer}, no de ${layer}`);
   if (!obj(row.spec)) bad(`el preset ${key} no tiene spec`);
   if (row.spec.entry != null && !ENTRIES.includes(row.spec.entry)) bad(`el preset ${key} pide una entrada desconocida: ${row.spec.entry}`);
+  if (row.spec.engine != null && !TEXT_ENGINES.includes(row.spec.engine)) bad(`el preset ${key} pide un motor desconocido: ${row.spec.engine} (${TEXT_ENGINES.join(' | ')})`);
   if (layer === 'role' && num(row.spec.duration_ms, 0) > ROLE_MAX_ENTRY_MS) {
     bad(`el preset de rol ${key} entra en ${row.spec.duration_ms} ms (tope ${ROLE_MAX_ENTRY_MS} ms)`);
   }
@@ -183,17 +292,20 @@ export function resolveTextPreset(rows, key, brandId, layer) {
  */
 export function fontFacesNeeded(tl, rows, brandId) {
   const roles = new Map();
-  const add = (key, layer) => {
+  const has = (item, field) => Array.isArray(item?.[field]) && item[field].length > 0;
+  const add = (key, layer, item = null) => {
     const spec = resolveTextPreset(rows, key, brandId, layer).spec;
     const role = spec.font_role ?? DEFAULT_FONT_ROLE[layer];
-    roles.set(role, (roles.get(role) ?? false) || spec.bold === true);
+    const prev = roles.get(role) ?? { bold: false, italic: false };
+    // v1.4.0: un tramo de `bold_spans` sobre texto regular necesita la negrita real; uno de `italic_spans`, la cursiva.
+    roles.set(role, { bold: prev.bold || spec.bold === true || (spec.bold !== true && has(item, 'bold_spans')), italic: prev.italic || has(item, 'italic_spans') });
   };
-  if (tl?.hook) add(tl.hook.preset_key, 'hook');
-  for (const r of tl?.roles ?? []) if (r?.show !== false) add(r.preset_key, 'role');
+  if (tl?.hook) add(tl.hook.preset_key, 'hook', tl.hook);
+  for (const r of tl?.roles ?? []) if (r?.show !== false) add(r.preset_key, 'role', r);
   if (tl?.captions && tl.captions.enabled !== false) add(tl.captions.preset_key, 'caption');
-  for (const k of tl?.key_titles ?? []) add(k.preset_key, 'key_title');
-  if (tl?.cta) add(tl.cta.preset_key, 'cta');
-  return [...roles].map(([role, bold]) => ({ role, bold }));
+  for (const k of tl?.key_titles ?? []) add(k.preset_key, 'key_title', k);
+  if (tl?.cta) add(tl.cta.preset_key, 'cta', tl.cta);
+  return [...roles].map(([role, f]) => ({ role, bold: f.bold, ...(f.italic ? { italic: true } : {}) }));
 }
 
 /** Los roles tipográficos que necesita el pedido (para bajar sólo esas fuentes). PURO. */
@@ -210,6 +322,7 @@ export function faceMeasure(faces, fallback = estimateMeasure) {
   return (text, sizePx, o = {}) => {
     const f = faces?.[o.family];
     if (!f?.regular) return fallback(text, sizePx, o);
+    if (o.italic && f.italic && !o.bold) return f.italic(text, sizePx, o);
     if (o.bold && f.bold) return f.bold(text, sizePx, { ...o, bold: false });
     return f.regular(text, sizePx, o);
   };
@@ -228,7 +341,7 @@ export function colorSlots({ tokens, textLayers }) {
     accent: textLayers?.captions?.accent_role ?? pal.headline_emphasis ?? lay.rule?.palette ?? null,
     scrim: lay.scrim?.palette ?? null,
     rule: lay.rule?.palette ?? null,
-    identity: textLayers?.identity?.strip_role ?? tokens?.identity?.palette ?? null,
+    identity: textLayers?.identity?.identity_role ?? textLayers?.identity?.strip_role ?? tokens?.identity?.palette ?? null,
   };
 }
 
@@ -524,30 +637,63 @@ function motion(spec, { kind, x, y, rect, canvas, durMs }) {
 }
 
 /** Texto de un bloque con énfasis y entradas por palabra o por carácter. PURO. */
-function blockText(m, spec, { emphasis = [], baseColor, emphasisColor, durMs }) {
-  const emph = new Set(emphasis.flatMap((e) => String(e).split(/\s+/)).map(norm).filter(Boolean));
+/**
+ * Las palabras de cada línea del bloque medido, con sus tramos de estilo (v1.4.0): [[{ text, emphasis, runs: [{ text,
+ * italic, bold, color }] }]]. `raw` es el texto que se midió (sin las llaves y barras que libass interpreta); `flags`,
+ * el estilo de cada carácter de `raw` (`charStyles`). La palabra conserva la caja de presentación de la línea medida.
+ * `baseBold`: el peso del bloque; un tramo de `bold_spans` lo invierte. `boldAvailable(bool)`: si existe la cara del
+ * peso invertido; si no, el tramo queda con su peso (no se simula, como ImageLab) y se cuenta en `boldSkipped`. PURO.
+ */
+export function blockWords(m, raw, flags, { baseBold = false, boldAvailable = () => true } = {}) {
+  const tokens = [...String(raw).matchAll(/\S+/g)];
+  let k = 0, boldSkipped = 0;
+  const lines = m.lines.map((line) => line.split(' ').filter((w) => w !== '').map((shown) => {
+    const tok = tokens[k++];
+    const f = tok ? flags.slice(tok.index, tok.index + tok[0].length) : [];
+    const same = tok && tok[0].length === shown.length;
+    const runs = [];
+    for (let i = 0; i < shown.length; i++) {
+      const g = same ? (f[i] ?? {}) : (f[0] ?? {});
+      let bold = baseBold;
+      if (g.bold) { if (boldAvailable(!baseBold)) bold = !baseBold; else boldSkipped++; }
+      const st = { italic: !!g.italic, bold, color: !!(g.emphasis || g.color) };
+      const last = runs[runs.length - 1];
+      if (last && last.italic === st.italic && last.bold === st.bold && last.color === st.color) last.text += shown[i];
+      else runs.push({ text: shown[i], ...st });
+    }
+    return { text: shown, emphasis: f.some((x) => x?.emphasis), runs };
+  }));
+  return { lines, boldSkipped };
+}
+
+/** Texto ASS de un bloque: entradas por palabra o por carácter, y los tramos de estilo de cada palabra. PURO. */
+function blockText(m, spec, { words, baseColor, emphasisColor, durMs, baseBold = false }) {
   const entry = spec.entry ?? 'fade';
   const d = Math.max(0, num(spec.duration_ms, 300));
   const totalChars = m.lines.join(' ').length || 1;
   const stagger = Math.max(10, num(spec.stagger_ms, entry === 'type' ? Math.min(60, d / totalChars) : 120));
   const sf = R(num(spec.scale_from, 0.85) * 100);
   let ci = 0, wi = 0;
-  const lines = m.lines.map((line) => line.split(' ').map((word) => {
-    const isEm = emph.has(norm(word));
-    const col = isEm ? `{\\c${emphasisColor}}` : '';
-    const back = isEm ? `{\\c${baseColor}}` : '';
-    let body;
-    if (entry === 'type') {
-      body = [...clean(word)].map((ch) => {
-        const t = Math.min(R(ci++ * stagger), Math.max(0, durMs - 1));
-        return `{\\alpha&HFF&\\t(${t},${t + 1},\\alpha&H00&)}${ch}`;
-      }).join('');
-      ci++;
-    } else if (entry === 'pop_words') {
+  const runTags = (r) => `${r.italic ? '\\i1' : ''}${r.bold !== baseBold ? (r.bold ? '\\b1' : '\\b0') : ''}${r.color ? `\\c${emphasisColor}` : ''}`;
+  const resetTags = (r) => `${r.italic ? '\\i0' : ''}${r.bold !== baseBold ? (baseBold ? '\\b1' : '\\b0') : ''}${r.color ? `\\c${baseColor}` : ''}`;
+  const lines = words.map((line) => line.map((w) => {
+    const pieces = w.runs.map((r) => {
+      const on = runTags(r), off = resetTags(r);
+      let body;
+      if (entry === 'type') {
+        body = [...clean(r.text)].map((ch) => {
+          const t = Math.min(R(ci++ * stagger), Math.max(0, durMs - 1));
+          return `{\\alpha&HFF&\\t(${t},${t + 1},\\alpha&H00&)}${ch}`;
+        }).join('');
+      } else body = clean(r.text);
+      return `${on ? `{${on}}` : ''}${body}${off ? `{${off}}` : ''}`;
+    }).join('');
+    if (entry === 'type') ci++;
+    if (entry === 'pop_words') {
       const t = Math.min(R(wi++ * stagger), Math.max(0, durMs - 1));
-      body = `{\\alpha&HFF&\\fscx${sf}\\fscy${sf}\\t(${t},${t + Math.max(1, R(d))},\\alpha&H00&\\fscx100\\fscy100)}${clean(word)}`;
-    } else body = clean(word);
-    return `${col}${body}${back}`;
+      return `{\\alpha&HFF&\\fscx${sf}\\fscy${sf}\\t(${t},${t + Math.max(1, R(d))},\\alpha&H00&\\fscx100\\fscy100)}${pieces}`;
+    }
+    return pieces;
   }).join(' '));
   return lines.join('\\N');
 }
@@ -558,7 +704,9 @@ function blockText(m, spec, { emphasis = [], baseColor, emphasisColor, durMs }) 
  * bold})`: la medida (real o conservadora). PURO.
  */
 export function buildTextLayers({ textLayers: tl, timeline = null, presets, brandId, palette, typography, tokens = null,
-  safeZone, canvas, durationMs, measure = estimateMeasure }) {
+  safeZone, canvas, durationMs, measure: measureBase = estimateMeasure, faceAvail = null }) {
+  // `measure` es la medida vigente: la de base, o la del bloque si trae tramos en negrita o cursiva (ver `withBlock`).
+  let measure = measureBase;
   validateTextLayers(tl);
   if (!(pos(canvas?.width) && pos(canvas?.height))) bad('lienzo inválido');
   if (!pos(durationMs)) bad('la duración del video base es desconocida');
@@ -594,7 +742,8 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   const clipSafe = `\\clip(${safe.x},${safe.y},${safe.x1},${safe.y1})`;
 
   /** Dibuja un bloque ya colocado: caja, filete y texto. */
-  const draw = ({ layer, key, spec, m, rect, t, textHex, emphasis = [], styleName, fam, align, placed = 'auto' }) => {
+  const drawn = [];
+  const draw = ({ layer, key, spec, m, rect, t, textHex, emphasisHex, words, styleName, fam, align, placed = 'auto' }) => {
     const dur = t.end_ms - t.start_ms;
     const ruleOff = m.rule && m.rule.position === 'above' ? m.rule.th + m.rule.gap : 0;
     const content = { x: rect.x, y: rect.y + ruleOff, w: rect.w, h: rect.h - (m.rule ? m.rule.th + m.rule.gap : 0) };
@@ -616,18 +765,19 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     if (m.rule) {
       const rhex = color(spec.rule.color ?? 'rule');
       const ry = m.rule.position === 'above' ? rect.y : rect.y + rect.h - m.rule.th;
-      const rx = align === 'center' ? rect.x + (rect.w - m.rule.w) / 2 : rect.x;
+      const rx = align === 'center' ? rect.x + (rect.w - m.rule.w) / 2 : align === 'right' ? rect.x + rect.w - m.rule.w : rect.x;
       const rr = { x: rx, y: ry, w: m.rule.w, h: m.rule.th };
       const mv = motion(spec, { kind: 'rule', x: rx, y: ry, rect: rr, canvas, durMs: dur });
       events.push(`Dialogue: 1,${ts(t.start_ms)},${ts(t.end_ms)},${styleName},,0,0,0,,{\\an7${mv.tags}${mv.clipped ? '' : clipSafe}\\bord0\\shad0\\c${assColor(rhex)}\\p1}` +
         `m 0 0 l ${R(m.rule.w)} 0 ${R(m.rule.w)} ${R(m.rule.th)} 0 ${R(m.rule.th)}{\\p0}`);
     }
-    const tx = align === 'center' ? content.x + content.w / 2 : content.x + m.padX + m.ext;
+    const tx = align === 'center' ? content.x + content.w / 2 : align === 'right' ? content.x + content.w - m.padX - m.ext : content.x + m.padX + m.ext;
     const ty = content.y + m.padY + m.ext;
     const mv = motion(spec, { kind: 'text', x: tx, y: ty, rect, canvas, durMs: dur });
-    const body = blockText(m, spec, { emphasis, baseColor: assColor(textHex), emphasisColor: assColor(color(spec.emphasis_color ?? 'accent')), durMs: dur });
-    events.push(`Dialogue: 2,${ts(t.start_ms)},${ts(t.end_ms)},${styleName},,0,0,0,,{\\an${align === 'center' ? 8 : 7}${mv.tags}${mv.clipped ? '' : clipSafe}}${body}`);
-    blocks.push({ layer, preset_key: key, rect: { x: R(rect.x), y: R(rect.y), w: R(rect.w), h: R(rect.h) }, start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed });
+    const body = blockText(m, spec, { words, baseColor: assColor(textHex), emphasisColor: assColor(emphasisHex), durMs: dur, baseBold: m.bold });
+    events.push(`Dialogue: 2,${ts(t.start_ms)},${ts(t.end_ms)},${styleName},,0,0,0,,{\\an${align === 'center' ? 8 : align === 'right' ? 9 : 7}${mv.tags}${mv.clipped ? '' : clipSafe}}${body}`);
+    blocks.push({ layer, preset_key: key, rect: { x: R(rect.x), y: R(rect.y), w: R(rect.w), h: R(rect.h) }, start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed, align });
+    drawn.push({ layer, preset_key: key, spec, m, rect, t, textHex, emphasisHex, words, family: fam, align, placed });
   };
 
   // 1 · Banda de subtítulos (fija abajo de la zona segura): el resto se coloca respecto de ella.
@@ -655,7 +805,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
 
   const place = (m, spec, layer, align, anchorDefault) => {
     const anchor = spec.anchor ?? anchorDefault;
-    const x = align === 'center' ? safe.x + (safe.w - m.w) / 2 : safe.x;
+    const x = align === 'center' ? safe.x + (safe.w - m.w) / 2 : align === 'right' ? safe.x1 - m.w : safe.x;
     let y;
     if (anchor === 'top') y = safe.y;
     else if (anchor === 'center') y = safe.y + (floorY - safe.y - m.h) / 2;
@@ -727,45 +877,80 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     return { m, rect, placed: 'manual' };
   };
 
+  // v1.4.0 — ESTILOS DEL BLOQUE: tramos literales (emphasis, italic_spans, bold_spans, color_spans), color del resaltado
+  // (`emphasis_role`) y alineación. La medida del bloque es CONSERVADORA si trae tramos que ensanchan: el bloque entero
+  // se mide también en negrita (o en cursiva) y vale el mayor ancho, así un tramo nunca saca texto de su caja.
+  const alignOf = (item, spec, layer) => (layer === 'role' ? 'left'
+    : ALIGNS.includes(item.align) ? item.align : spec.align === 'left' ? 'left' : spec.align === 'right' ? 'right' : 'center');
+  const withBlock = (item, spec, text, label, fam) => {
+    const raw = String(text).replace(/[{}\\]/g, '');
+    const { flags, missing } = charStyles(raw, item);
+    for (const x of missing) warnings.push(`TEXT_SPAN_NOT_FOUND: ${label}.${x.field} «${x.term}» no está literal en el texto; no se aplica`);
+    const anyBold = flags.some((f) => f.bold), anyItalic = flags.some((f) => f.italic);
+    const av = faceAvail?.[fam];
+    if (anyItalic && faceAvail && !av?.italic) warnings.push(`TEXT_ITALIC_SYNTHESIZED: ${label}: la familia ${fam} no ofrece cursiva; se inclina la recta`);
+    measure = (anyBold || anyItalic)
+      ? (s, px, o = {}) => Math.max(measureBase(s, px, o), anyBold ? measureBase(s, px, { ...o, bold: !o.bold }) : 0, anyItalic ? measureBase(s, px, { ...o, italic: true }) : 0)
+      : measureBase;
+    let emphasisHex = color(spec.emphasis_color ?? 'accent');
+    if (item.emphasis_role) {
+      const row = (palette ?? []).find((p) => p?.role === item.emphasis_role);
+      if (row && HEX.test(String(row.hex ?? ''))) emphasisHex = `#${String(row.hex).replace('#', '').toUpperCase()}`;
+      else warnings.push(`TEXT_EMPHASIS_ROLE_UNKNOWN: ${label}.emphasis_role «${item.emphasis_role}» no está en brand_palette; se usa el resaltado del preset`);
+    }
+    const wordsOf = (m) => {
+      const r = blockWords(m, raw, flags, { baseBold: m.bold, boldAvailable: (toBold) => (!faceAvail || !toBold ? true : !!av?.bold) });
+      if (r.boldSkipped) warnings.push(`TEXT_BOLD_UNAVAILABLE: ${label}: la familia ${fam} no ofrece la negrita real; el tramo queda con su peso (no se simula)`);
+      return r.lines;
+    };
+    return { emphasisHex, wordsOf, done: () => { measure = measureBase; } };
+  };
+
   // 2 · Gancho.
   if (tl.hook) {
     const row = resolveTextPreset(presets, tl.hook.preset_key, brandId, 'hook');
     const spec = row.spec, fam = family(spec, 'hook');
-    const align = spec.align === 'left' ? 'left' : 'center';
+    const align = alignOf(tl.hook, spec, 'hook');
+    const st = withBlock(tl.hook, spec, tl.hook.text, 'hook', fam);
     const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
     const hookArgs = { text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
     const { m, rect, placed } = tl.hook.place ? placeManual({ ...hookArgs, place: tl.hook.place }) : fitFree(hookArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex, placed,
-      emphasis: tl.hook.emphasis ?? [], styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
+    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+      styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
+    st.done();
   }
 
   // 3 · Títulos clave y CTA.
   for (const [i, k] of (tl.key_titles ?? []).entries()) {
     const row = resolveTextPreset(presets, k.preset_key, brandId, 'key_title');
     const spec = row.spec, fam = family(spec, 'key_title');
-    const align = spec.align === 'left' ? 'left' : 'center';
+    const align = alignOf(k, spec, 'key_title');
+    const st = withBlock(k, spec, k.text, `key_titles[${i}]`, fam);
     const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
     const kArgs = { text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
     const { m, rect, placed } = k.place ? placeManual({ ...kArgs, place: k.place }) : fitFree(kArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex, placed,
+    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
+    st.done();
   }
   if (tl.cta) {
     const row = resolveTextPreset(presets, tl.cta.preset_key, brandId, 'cta');
     const spec = row.spec, fam = family(spec, 'cta');
-    const align = spec.align === 'left' ? 'left' : 'center';
+    const align = alignOf(tl.cta, spec, 'cta');
+    const st = withBlock(tl.cta, spec, tl.cta.text, 'cta', fam);
     const at = Number(tl.cta.at_ms);
     const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
     const cArgs = { text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
     const { m, rect, placed } = tl.cta.place ? placeManual({ ...cArgs, place: tl.cta.place }) : fitFree(cArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex, placed,
+    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
+    st.done();
   }
 
   // 4 · Rol de cada persona: tercio inferior, sobre los subtítulos, al borde seguro izquierdo; sube si hay una cara.
@@ -777,12 +962,14 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const t = span(Number(r.at_ms), Number(r.at_ms) + Number(r.dur_ms), `roles[${i}]`);
     const roleSpec = { max_lines: str(spec.split_on) ? 4 : 2, ...spec };
     const roleMaxW = safe.w * num(spec.max_width_pct, 80) / 100;
+    const st = withBlock(r, spec, text, `roles[${i}]`, fam);
     // Colocado a mano (contrato v1.3.3): manda el operador, se avisa si tapa.
     if (r.place) {
       const pm = placeManual({ text, spec: roleSpec, layer: 'role', label: `roles[${i}]`, t, maxW: roleMaxW, fam, place: r.place });
       const hex = color(spec.color ?? 'text_body');
-      draw({ layer: 'role', key: row.preset_key, spec, m: pm.m, rect: pm.rect, t, textHex: hex, placed: 'manual',
-        styleName: styleFor(`R_${row.preset_key}`, fam, spec, pm.m, hex), fam, align: 'left' });
+      draw({ layer: 'role', key: row.preset_key, spec, m: pm.m, rect: pm.rect, t, textHex: hex, placed: 'manual', emphasisHex: st.emphasisHex,
+        words: st.wordsOf(pm.m), styleName: styleFor(`R_${row.preset_key}`, fam, spec, pm.m, hex), fam, align: 'left' });
+      st.done();
       continue;
     }
     const m = measureBlock({ text, spec: roleSpec, layer: 'role', canvas, maxW: roleMaxW, measure, family: fam });
@@ -802,7 +989,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
       rect = { x: safe.x, y: floorY - m.h, w: m.w, h: m.h };
     }
     const textHex = color(spec.color ?? 'text_body');
-    draw({ layer: 'role', key: row.preset_key, spec, m, rect, t, textHex, styleName: styleFor(`R_${row.preset_key}`, fam, spec, m, textHex), fam, align: 'left' });
+    draw({ layer: 'role', key: row.preset_key, spec, m, rect, t, textHex, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+      styleName: styleFor(`R_${row.preset_key}`, fam, spec, m, textHex), fam, align: 'left' });
+    st.done();
   }
 
   // 5 · Subtítulos karaoke: un evento por palabra activa, la palabra activa en el color de acento del preset.
@@ -849,6 +1038,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   }
 
   const filters = [];
+  const stripRect = identityRect({ identity: tl.identity, tokens, slots, palette, canvas, safe });
   const strip = identityFilter({ identity: tl.identity, tokens, slots, palette, canvas, safe });
   if (strip) filters.push(strip);
 
@@ -860,28 +1050,36 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
     ...events, '',
   ].join('\n');
-  return { ass, filters, families: [...families], blocks, safe, warnings };
+  return { ass, filters, families: [...families], blocks, safe, warnings, drawn, strip: stripRect };
 }
 
 /**
- * La franja de identidad como `drawbox` de ffmpeg: el modo y el ancho salen de `tokens.identity` de la marca; el color,
- * del rol pedido (`identity.strip_role`) o del de los tokens, resuelto en `brand_palette`. Sin dato → VIDEOLAB_BAD_REQUEST.
- * `full_bleed` = alto completo; si no, el alto de la zona segura. PURO.
+ * La franja de identidad (rectángulo y color): el modo y el grosor salen de `tokens.identity` de la marca; el color,
+ * del rol pedido (`identity.identity_role`, o su alias legacy `strip_role`) o del de los tokens, resuelto en
+ * `brand_palette`. Modos de ImageLab (v1.4.0): none | edge_left | edge_right | edge_bottom (nunca un marco cerrado).
+ * `full_bleed: false` en los bordes laterales = el alto de la zona segura. Sin dato → VIDEOLAB_BAD_REQUEST. PURO.
  */
-export function identityFilter({ identity, tokens, slots, palette, canvas, safe }) {
+export function identityRect({ identity, tokens, slots, palette, canvas, safe }) {
   if (!identity?.strip) return null;
   const idt = tokens?.identity;
   if (!obj(idt)) bad('la marca no declara identity en imagelab_overlay_tokens (franja)');
-  const hex = resolveColor('identity', { slots, palette }).slice(1);
-  if (!pos(idt.width_pct)) bad('identity.width_pct de la marca falta o no es positivo');
-  const w = Math.max(1, Math.round(canvas.width * idt.width_pct / 100));
   const mode = idt.mode ?? 'edge_left';
-  let x;
-  if (mode === 'edge_left') x = 0;
-  else if (mode === 'edge_right') x = canvas.width - w;
-  else bad(`identity.mode desconocido: ${mode}`);
+  if (!IDENTITY_MODES.includes(mode)) bad(`identity.mode desconocido: ${mode} (${IDENTITY_MODES.join(' | ')})`);
+  if (mode === 'none') return null;
+  const hex = resolveColor('identity', { slots, palette });
+  if (!pos(idt.width_pct)) bad('identity.width_pct de la marca falta o no es positivo');
+  // Grosor: % del lado corto del lienzo, como ImageLab (en vertical, el ancho: igual que antes de v1.4.0).
+  const th = Math.max(1, Math.round(Math.min(canvas.width, canvas.height) * idt.width_pct / 100));
+  if (mode === 'edge_bottom') return { x: 0, y: canvas.height - th, w: canvas.width, h: th, color: hex, mode };
+  const x = mode === 'edge_left' ? 0 : canvas.width - th;
   const [y, h] = idt.full_bleed === false ? [safe.y, safe.h] : [0, canvas.height];
-  return `drawbox=x=${x}:y=${y}:w=${w}:h=${h}:color=0x${hex}@1:t=fill`;
+  return { x, y, w: th, h, color: hex, mode };
+}
+
+/** La franja como `drawbox` de ffmpeg (dibujo ASS). Sin franja → null. PURO. */
+export function identityFilter(args) {
+  const r = identityRect(args);
+  return r ? `drawbox=x=${r.x}:y=${r.y}:w=${r.w}:h=${r.h}:color=0x${r.color.slice(1)}@1:t=fill` : null;
 }
 
 /**

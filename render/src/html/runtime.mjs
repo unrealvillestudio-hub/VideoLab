@@ -190,9 +190,9 @@ export function mount(root, scene, doc = root.ownerDocument) {
       const hasEm = b.tracks.some((tr) => tr.target === 'emphasis');
       k.units.emphasis.forEach((node, i) => {
         const s = stateAt(b.tracks, 'emphasis', t, b, { i, n: k.units.emphasis.length });
-        const tint = hasEm ? s.tint : 1;
-        node.style.color = mix(b.colors.text, b.colors.emphasis, Math.max(0, Math.min(1, tint)));
+        // Sin pista de énfasis, el color lo ponen los tramos (`runs`). Con pista, el tinte anima la palabra entera.
         if (hasEm) {
+          node.style.color = mix(b.colors.text, b.colors.emphasis, Math.max(0, Math.min(1, s.tint)));
           const base = stateAt(b.tracks, 'word', t, b, { i: k.units.word.indexOf(node), n: k.units.word.length });
           apply(node, { ...s, opacity: s.opacity * base.opacity, x_em: s.x_em + base.x_em, y_em: s.y_em + base.y_em, scale: s.scale * base.scale }, em);
         }

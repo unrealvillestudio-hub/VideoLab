@@ -1,6 +1,6 @@
-// EL CAPTURADOR DETERMINISTA del motor HTML de VideoLab (F0, 2026-11-16) — opción (a), propio.
+// EL CAPTURADOR DETERMINISTA del motor HTML de VideoLab (F0, 2026-11-16; F1: CDP crudo con beginFrame, cdp.mjs).
 //
-// Chromium sin pantalla (Playwright), lienzo del pedido, escala 1, fondo transparente. Para cada fotograma i se fija el
+// chrome-headless-shell, lienzo del pedido, escala 1, fondo transparente. Para cada fotograma i se fija el
 // tiempo t = i / fps con `window.__vl.seek(t)` y se captura un PNG con alfa por CDP. El reloj real no interviene nunca:
 // el tiempo lo pone el capturador. Fuera de los tramos con texto no se abre el navegador: se repite un PNG transparente.
 // Los PNG van por una tubería a ffmpeg, que los monta sobre el video limpio con la franja de identidad y codifica con la
@@ -10,8 +10,14 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
+import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import { scenePage } from './page.mjs';
 import { textSpans } from './scene.mjs';
+import { openPage, findHeadlessShell } from './cdp.mjs';
+import { RenderError } from '../plan.mjs';
 
 /** PNG RGBA totalmente transparente de W×H (sin navegador). PURO. */
 export function blankPng(W, H) {
@@ -44,36 +50,41 @@ export function overlayArgs({ input, fps, filters = [], out, threads = 2 }) {
 }
 
 /**
- * Renderiza la escena sobre `input` y escribe `out`. `fonts` = [{ family, bytes, format }]. Devuelve tiempos,
- * fotogramas capturados y la huella de cada fotograma (sha256 del PNG) para comprobar el determinismo.
- * `chromium` = el `chromium` de Playwright (se inyecta: el módulo no lo importa, así el resto del render no lo necesita).
+ * Renderiza la escena sobre `input` y escribe `out`. `fonts` = [{ family, weight?, style?, bytes, format }].
+ * `mode`: 'beginframe' (por defecto) o 'screenshot'. Si beginFrame no arranca (otro binario u otra versión), se
+ * repite con 'screenshot' y se avisa (`warnings`): el píxel es el mismo (R1.1), así que el video no cambia.
+ * `browserPath`: chrome-headless-shell (por defecto `findHeadlessShell()`). `workDir`: donde se escribe la página.
+ * Devuelve tiempos, el modo usado, avisos y la huella de cada fotograma (sha256 del PNG).
  */
-export async function renderHtmlLayers({ scene, fonts, input, out, chromium, frames = null, onFrame = null, encode = true }) {
+export async function renderHtmlLayers({ scene, fonts, input, out, browserPath = findHeadlessShell(), mode = 'beginframe', workDir,
+  frames = null, onFrame = null, encode = true }) {
   const t0 = performance.now();
+  if (!browserPath) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'no hay chrome-headless-shell (HEADLESS_SHELL o una instalación de Playwright)');
   const { width: W, height: H } = scene.canvas;
   const fps = scene.fps;
   const total = frames ?? Math.round((scene.durationMs / 1000) * fps);
   const spans = textSpans(scene);
   const inSpan = (t) => spans.some(([a, b]) => t >= a && t < b);
-  const browser = await chromium.launch({ args: ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb', '--disable-gpu'] });
-  const timings = { launch_ms: 0, load_ms: 0, capture_ms: 0, encode_wait_ms: 0, total_ms: 0 };
+  const dir = workDir ?? mkdtempSync(join(tmpdir(), 'vl-html-'));
+  const pageFile = join(dir, 'text_layers.html');
+  writeFileSync(pageFile, scenePage(scene, fonts));
+  const timings = { open_ms: 0, capture_ms: 0, encode_wait_ms: 0, total_ms: 0 };
+  const warnings = [];
   const hashes = [];
   const frameMs = [];
   let captured = 0;
   let ff = null, ffDone = null, ffErr = '';
+  let page = null;
   try {
-    timings.launch_ms = Math.round(performance.now() - t0);
-    const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
-    const page = await ctx.newPage();
-    await page.route('**/*', (r) => (r.request().url().startsWith('data:') ? r.continue() : r.abort()));   // sin red
-    const tl = performance.now();
-    await page.setContent(scenePage(scene, fonts), { waitUntil: 'load' });
-    const ok = await page.evaluate(() => window.__vl.ready);
-    if (!ok.every(Boolean)) throw new Error(`fuentes sin cargar en la página: ${JSON.stringify(scene.families)} → ${JSON.stringify(ok)}`);
-    const fit = await page.evaluate(() => window.__vl.check());
-    const cdp = await ctx.newCDPSession(page);
-    await cdp.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
-    timings.load_ms = Math.round(performance.now() - tl);
+    const open = (m) => openPage({ browserPath, url: pathToFileURL(pageFile).href, width: W, height: H, mode: m, fps });
+    try { page = await open(mode); } catch (e) {
+      if (mode !== 'beginframe') throw e;
+      warnings.push(`TEXT_CAPTURE_FALLBACK: beginFrame no disponible (${String(e.message).slice(0, 160)}); se captura con captureScreenshot (mismo píxel)`);
+      page = await open('screenshot');
+    }
+    if (!page.fonts.every(Boolean)) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `fuentes sin cargar en la página: ${JSON.stringify(scene.families)} → ${JSON.stringify(page.fonts)}`);
+    const fit = await page.evaluate('window.__vl.check()');
+    timings.open_ms = Math.round(performance.now() - t0);
 
     if (encode) {
       ff = spawn('ffmpeg', overlayArgs({ input, fps, filters: scene.filters, out }), { stdio: ['pipe', 'ignore', 'pipe'] });
@@ -89,9 +100,8 @@ export async function renderHtmlLayers({ scene, fonts, input, out, chromium, fra
       let png, h;
       if (inSpan(t)) {
         const tf = performance.now();
-        await page.evaluate((ms) => window.__vl.seek(ms), t);
-        const r = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true, optimizeForSpeed: false, captureBeyondViewport: false, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
-        png = Buffer.from(r.data, 'base64');
+        await page.evaluate(`window.__vl.seek(${t})`);
+        png = await page.frame(true);
         h = createHash('sha256').update(png).digest('hex');
         captured++;
         frameMs.push([i, performance.now() - tf]);
@@ -106,9 +116,10 @@ export async function renderHtmlLayers({ scene, fonts, input, out, chromium, fra
     timings.encode_wait_ms = Math.round(performance.now() - te);
     timings.total_ms = Math.round(performance.now() - t0);
     const digest = createHash('sha256').update(hashes.join('\n')).digest('hex');
-    return { frames: total, captured, timings, hashes, digest, fit, spans, frameMs };
+    return { frames: total, captured, mode: page.mode, warnings, timings, hashes, digest, fit, spans, frameMs };
   } finally {
     if (ff && ff.exitCode == null) ff.kill('SIGKILL');
-    await browser.close();
+    if (page) await page.close();
+    if (!workDir) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* nada */ } }
   }
 }

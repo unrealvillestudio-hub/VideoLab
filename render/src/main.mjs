@@ -17,7 +17,9 @@ import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
 import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs, facesOnCanvas } from './conversation.mjs';
 import { brandFont, brandFontFaces } from './fonts.mjs';
-import { validateTextLayers, timelineWords, presetKeysOf, fontFacesNeeded, faceMeasure, buildTextLayers, textLayersArgs, ttfMeasure,
+import { buildScene } from './html/scene.mjs';
+import { renderHtmlLayers } from './html/capture.mjs';
+import { validateTextLayers, timelineWords, presetKeysOf, fontFacesNeeded, faceMeasure, buildTextLayers, textLayersArgs, ttfMeasure, engineOf,
   estimateMeasure, conversationTimeline } from './textlayers.mjs';
 
 const run = promisify(execFile);
@@ -106,28 +108,67 @@ async function prepareTextLayers({ cfg, brandId, params, profile, canvas, textLa
   // conservadora (sobrestima: nunca deja texto fuera de la zona segura).
   const fontsDir = join(work, 'fonts');
   const needs = new Map();
-  for (const { role, bold } of fontFacesNeeded(textLayers, presets, brandId)) {
+  for (const { role, bold, italic } of fontFacesNeeded(textLayers, presets, brandId)) {
     const row = typography.find((t) => t.role === role);
     if (!row?.font_family || !row?.css_import) throw new RenderError('VIDEOLAB_BAD_REQUEST', `brand_typography no tiene el rol ${role} (familia y css_import) para la marca ${brandId}`);
     const prev = needs.get(row.font_family);
-    needs.set(row.font_family, { row, bold: (prev?.bold ?? false) || bold });
+    needs.set(row.font_family, { row, bold: (prev?.bold ?? false) || bold, italic: (prev?.italic ?? false) || !!italic });
   }
   const faces = {};
+  const faceAvail = {};
+  const fontFiles = [];
   let metrics = 'font';
   const read = (file) => { try { return ttfMeasure(readFileSync(file)); } catch { metrics = 'estimate'; return null; } };
-  for (const [family, { row, bold }] of needs) {
-    const got = await brandFontFaces({ cssImport: row.css_import, family, dir: fontsDir, bold });
+  for (const [family, { row, bold, italic }] of needs) {
+    const got = await brandFontFaces({ cssImport: row.css_import, family, dir: fontsDir, bold, italic });
     const regular = read(got.regular.file);
     // Negrita real presente pero ilegible: libass la dibuja igual, así que se mide con la estimación conservadora.
     const strong = regular && got.bold ? read(got.bold.file) ?? ((t, px) => estimateMeasure(t, px, { bold: true })) : null;
-    faces[family] = { regular, bold: strong };
+    const slanted = regular && got.italic ? read(got.italic.file) : null;
+    faces[family] = { regular, bold: strong, italic: slanted };
+    faceAvail[family] = { bold: !!got.bold, italic: !!got.italic };
+    for (const [f, weight, style] of [[got.regular, got.regular.weight, 'normal'], [got.bold, 700, 'normal'], [got.italic, 400, 'italic']]) {
+      if (f) fontFiles.push({ family, weight, style, file: f.file, format: f.file.endsWith('.otf') ? 'opentype' : 'truetype' });
+    }
   }
   const measure = faceMeasure(faces, estimateMeasure);
-  const plan = buildTextLayers({ textLayers, timeline, presets, brandId, palette, typography, tokens: marca?.tokens ?? null,
-    safeZone, canvas, durationMs, measure });
+  const args = { textLayers, timeline, presets, brandId, palette, typography, tokens: marca?.tokens ?? null,
+    safeZone, canvas, durationMs, measure, faceAvail };
+  const plan = buildTextLayers(args);
   const ass = join(work, 'text_layers.ass');
   writeFileSync(ass, plan.ass);
-  return { ass, fontsDir, filters: plan.filters, blocks: plan.blocks, warnings: plan.warnings ?? [], metrics, canal };
+  // v1.4.0 — MOTOR DE DIBUJO: si algún preset del pedido declara `engine: 'html'`, todo el texto del pedido se dibuja
+  // con el motor HTML (los presets sin `motion` se traducen desde su `entry`); si no, ASS como hasta v1.3.3.
+  const engine = engineOf(textLayers, presets, brandId);
+  const scene = engine === 'html' ? buildScene({ ...args, fps: SPEC.fps }) : null;
+  return { ass, fontsDir, filters: plan.filters, blocks: plan.blocks, warnings: plan.warnings ?? [], metrics, canal, engine, scene, fontFiles,
+    presets: presetKeysOf(textLayers) };
+}
+
+/**
+ * Dibuja las capas sobre `input` con el motor que pidió el pedido. Si el motor HTML falla (navegador ausente, captura
+ * rota), se dibuja con ASS y se avisa (`TEXT_ENGINE_FALLBACK`): la pieza sale igual, con el dibujo de respaldo.
+ * Devuelve { engine, capture, warnings }: el motor que DIBUJÓ, el modo de captura y los avisos del dibujo.
+ */
+async function drawTextLayers({ tlr, input, out, work }) {
+  const warnings = [];
+  if (tlr.engine === 'html') {
+    try {
+      const fonts = tlr.fontFiles.filter((f) => tlr.scene.families.includes(f.family)).map((f) => ({ ...f, bytes: readFileSync(f.file) }));
+      const r = await renderHtmlLayers({ scene: tlr.scene, fonts, input, out, workDir: work });
+      return { engine: 'html', capture: r.mode, warnings: r.warnings };
+    } catch (e) {
+      warnings.push(`TEXT_ENGINE_FALLBACK: el motor HTML falló (${String(e?.message ?? e).slice(0, 200)}); se dibuja con ASS`);
+    }
+  }
+  await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out })], { maxBuffer: 1 << 26 });
+  return { engine: 'ass', capture: null, warnings };
+}
+
+/** `text_layout` de la salida: geometría, avisos y la ETIQUETA del dibujo (motor, captura y presets). */
+function textLayout(tlr, drawn) {
+  return { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: [...tlr.warnings, ...drawn.warnings],
+    engine: drawn.engine, capture: drawn.capture, presets: tlr.presets };
 }
 
 /**
@@ -154,7 +195,7 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
   const durationMs = Math.round(Number(baseProbe.format?.duration ?? 0) * 1000);
   const tlr = await prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers: prev.text_layers, timeline: prev.timeline ?? null, durationMs, work });
   const outPath = join(work, 'out.mp4');
-  await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input: inPath, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out: outPath })], { maxBuffer: 1 << 26 });
+  const drawn = await drawTextLayers({ tlr, input: inPath, out: outPath, work });
   const bytes = statSync(outPath).size;
   const probe = await ffprobe(outPath);
   const fallas = validateOutput(probe, canvas, bytes);
@@ -173,7 +214,7 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
       duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes },
     clean_video: { url: prev.base_video.url },
     text_layers: prev.text_layers,
-    text_layout: { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: tlr.warnings },
+    text_layout: textLayout(tlr, drawn),
     provider: 'unrlvl', model_id: RATE_MODEL,
     cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
   };
@@ -317,6 +358,7 @@ export async function renderJob(jobId, env = process.env) {
     // Conversación (v1.3.0): el timeline de la voz y, si el pedido trae capas de texto, su guion — antes de gastar.
     let timeline = null;
     let tlr = null;
+    let tlDrawn = null;
     if (isConversation) {
       timeline = conversationTimeline({ turns: prev.turns, cast: params.cast });
       // 2026-11-16 — LAS CARAS DE CADA TOMA. Si el pedido no trae `timeline.faces`, se le piden a ImageLab (el detector es
@@ -454,7 +496,7 @@ export async function renderJob(jobId, env = process.env) {
       cleanVideo = { url: await S.upload(cfg, `${base}_clean.mp4`, readFileSync(cleanPath), 'video/mp4'), storage_path: `${base}_clean.mp4` };
       // 2) El final: las capas de texto editables, o la capa de ImageLab, encima del limpio; sin ninguna, el limpio.
       if (tlr) {
-        await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input: cleanPath, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out: outPath })], { maxBuffer: 1 << 26 });
+        tlDrawn = await drawTextLayers({ tlr, input: cleanPath, out: outPath, work });
       } else if (layer) {
         await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', cleanPath, '-i', layer, '-filter_complex', '[0:v][1:v]overlay=0:0,format=yuv420p[vout]',
           '-map', '[vout]', '-map', '0:a', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
@@ -555,7 +597,7 @@ export async function renderJob(jobId, env = process.env) {
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
       text_layer: layerMeta, unplaced_text: txt.unplaced,
       clean_video: cleanVideo, timeline, text_layers: tlr ? prev.text_layers : null,
-      text_layout: tlr ? { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: tlr.warnings } : null,
+      text_layout: tlr && tlDrawn ? textLayout(tlr, tlDrawn) : null,
       cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };
     await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });
