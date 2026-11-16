@@ -1,0 +1,97 @@
+{
+  "_doc": "Presets de PRUEBA del motor HTML (F0, 2026-11-16). NO se siembran en public.videolab_text_presets: los usa sólo el banco de la F0 (render/bench/motor_html_f0.mjs) y tests/html_engine_test.mjs. La forma es la de docs/text_presets_seed.json más dos claves nuevas en spec, propuestas para F1: `engine` ('html' | 'ass', eje del sistema) y `motion` (pistas de animación como dato; esquema en render/src/html/keyframes.mjs y en docs/MOTOR_HTML.md). Las claves de geometría (size_pct, box, rule, anchor…) son las de los presets actuales, así que la colocación no cambia. `entry` se conserva como respaldo: si el motor HTML no está, el dibujo ASS usa esa entrada. Los nombres describen la función, no una marca.",
+  "version": "f0",
+  "date": "2026-11-16",
+  "rows": [
+    {
+      "preset_key": "hook_char_rise",
+      "layer": "hook",
+      "name": "Gancho letra a letra con máscara",
+      "description": "La caja se abre de izquierda a derecha; cada letra sube desde debajo de la línea (máscara real por línea) con desenfoque que se aclara; las palabras de énfasis toman el acento y se subrayan después.",
+      "brand_id": null, "active": true, "status": "proposed", "source": "motor_html_f0",
+      "spec": {
+        "engine": "html",
+        "entry": "mask", "duration_ms": 450, "exit_ms": 260,
+        "bold": true, "align": "center", "anchor": "top", "color": "text", "emphasis_color": "accent",
+        "size_pct": 5.2, "min_size_pct": 2.8, "max_lines": 4, "line_height": 1.12,
+        "box": { "color": "scrim", "opacity": 0.82, "pad_x_pct": 2, "pad_y_pct": 1, "radius_pct": 0.6 },
+        "motion": {
+          "mark": { "color": "accent", "height_em": 0.1, "offset_em": 0.06 },
+          "tracks": [
+            { "target": "box", "keys": [ { "t": 0, "clip_r": 1 }, { "t": 420, "clip_r": 0, "ease": "expo_out" } ] },
+            { "target": "line", "keys": [ { "t": 0, "clip_t": 0.001 }, { "t": 1400, "clip_t": 0.001 }, { "t": 1401, "clip_t": 0 } ] },
+            { "target": "char", "stagger": { "each_ms": 16 }, "keys": [
+              { "t": 120, "opacity": 0, "y_em": 0.85, "blur_em": 0.05 },
+              { "t": 520, "opacity": 1, "y_em": 0, "blur_em": 0, "ease": "expo_out" } ] },
+            { "target": "emphasis", "keys": [
+              { "t": 700, "tint": 0, "scale": 1, "mark": 0 },
+              { "t": 900, "tint": 1, "scale": 1.08, "ease": "cubic_out" },
+              { "t": 1100, "scale": 1, "ease": "back_out" },
+              { "t": 1250, "mark": 1, "ease": "expo_out" } ] },
+            { "target": "block", "from": "end", "keys": [
+              { "t": -260, "opacity": 1, "y_em": 0 },
+              { "t": 0, "opacity": 0, "y_em": -0.3, "ease": "cubic_in" } ] }
+          ]
+        }
+      }
+    },
+    {
+      "preset_key": "cta_card_spring",
+      "layer": "cta",
+      "name": "Tarjeta de llamada con resorte y brillo",
+      "description": "La tarjeta sube y se asienta con un rebote corto; el filete se dibuja desde el centro; las palabras entran escalonadas con desenfoque; un brillo cruza la tarjeta cada 2,6 s.",
+      "brand_id": null, "active": true, "status": "proposed", "source": "motor_html_f0",
+      "spec": {
+        "engine": "html",
+        "entry": "rise", "duration_ms": 380, "exit_ms": 220, "slide_from_pct": 2,
+        "bold": true, "align": "center", "anchor": "above_captions", "color": "text", "emphasis_color": "accent",
+        "size_pct": 3.6, "min_size_pct": 2.2, "max_lines": 4, "line_height": 1.15,
+        "box": { "color": "scrim", "opacity": 0.9, "pad_x_pct": 2.6, "pad_y_pct": 1.2, "radius_pct": 1 },
+        "rule": { "color": "accent", "gap_pct": 0.8, "position": "above", "width_pct": 10, "thickness_pct": 0.3 },
+        "motion": {
+          "sheen": { "color": "text", "width_pct": 35, "opacity": 0.2 },
+          "tracks": [
+            { "target": "block", "keys": [
+              { "t": 0, "opacity": 0, "y_em": 1.1, "scale": 0.94 },
+              { "t": 260, "opacity": 1, "ease": "cubic_out" },
+              { "t": 560, "y_em": 0, "scale": 1, "ease": "back_out" } ] },
+            { "target": "rule", "keys": [ { "t": 220, "scale_x": 0 }, { "t": 680, "scale_x": 1, "ease": "expo_out" } ] },
+            { "target": "word", "stagger": { "each_ms": 26 }, "keys": [
+              { "t": 160, "opacity": 0, "y_em": 0.5, "blur_em": 0.08 },
+              { "t": 560, "opacity": 1, "y_em": 0, "blur_em": 0, "ease": "expo_out" } ] },
+            { "target": "sheen", "repeat": { "every_ms": 2600 }, "keys": [
+              { "t": 1000, "sheen": 0 }, { "t": 1900, "sheen": 1, "ease": "sine_in_out" }, { "t": 1901, "sheen": -1 } ] },
+            { "target": "block", "from": "end", "keys": [ { "t": -220, "opacity": 1 }, { "t": 0, "opacity": 0, "ease": "quad_in" } ] }
+          ]
+        }
+      }
+    },
+    {
+      "preset_key": "key_title_counter",
+      "layer": "key_title",
+      "name": "Título clave con cifra que cuenta",
+      "description": "El filete se dibuja, las palabras suben escalonadas y cada cifra del texto cuenta desde cero hasta su valor, con los mismos separadores y decimales del texto.",
+      "brand_id": null, "active": true, "status": "proposed", "source": "motor_html_f0",
+      "spec": {
+        "engine": "html",
+        "entry": "fade", "duration_ms": 350, "exit_ms": 250,
+        "bold": true, "align": "center", "anchor": "center", "color": "text", "emphasis_color": "accent",
+        "size_pct": 4.6, "min_size_pct": 3.2, "max_lines": 4, "line_height": 1.12,
+        "outline": { "color": "#000000", "width_pct": 0.16 },
+        "shadow": { "alpha": 0.45, "color": "#000000", "depth_pct": 0.12 },
+        "rule": { "color": "rule", "gap_pct": 1.2, "position": "above", "width_pct": 12, "thickness_pct": 0.3 },
+        "motion": {
+          "tracks": [
+            { "target": "block", "keys": [ { "t": 0, "opacity": 0 }, { "t": 220, "opacity": 1, "ease": "cubic_out" } ] },
+            { "target": "rule", "keys": [ { "t": 0, "scale_x": 0 }, { "t": 520, "scale_x": 1, "ease": "expo_out" } ] },
+            { "target": "word", "stagger": { "each_ms": 45 }, "keys": [
+              { "t": 60, "opacity": 0, "y_em": 0.35 }, { "t": 420, "opacity": 1, "y_em": 0, "ease": "expo_out" } ] },
+            { "target": "number", "keys": [
+              { "t": 120, "count": 0, "scale": 0.92 }, { "t": 1100, "count": 1, "scale": 1, "ease": "expo_out" } ] },
+            { "target": "block", "from": "end", "keys": [ { "t": -250, "opacity": 1 }, { "t": 0, "opacity": 0, "ease": "quad_in" } ] }
+          ]
+        }
+      }
+    }
+  ]
+}
