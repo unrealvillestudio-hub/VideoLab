@@ -7,7 +7,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtempSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, statSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as S from './supa.mjs';
@@ -16,7 +16,9 @@ import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirecti
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
 import { planConversation, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './conversation.mjs';
-import { brandFont } from './fonts.mjs';
+import { brandFont, brandFontFile } from './fonts.mjs';
+import { validateTextLayers, timelineWords, presetKeysOf, fontRolesNeeded, buildTextLayers, textLayersArgs, ttfMeasure,
+  estimateMeasure, conversationTimeline } from './textlayers.mjs';
 
 const run = promisify(execFile);
 const LAB = 'videolab';
@@ -53,6 +55,120 @@ async function capCheck(cfg, prod, model, rate, seconds) {
   }
 }
 
+/** La tarifa vigente del render propio (ops_lab_rates). Sin ella no se trabaja. */
+async function renderRate(cfg) {
+  const rate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: RATE_MODEL, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
+  if (!rate?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${RATE_MODEL} en ops_lab_rates`);
+  return rate;
+}
+
+/**
+ * El asiento del render propio: segundos de cómputo del job a la tarifa vigente. El libro se escribe por
+ * ops_log_generation (SECURITY DEFINER), igual que los demás labs: service_role no tiene INSERT directo sobre
+ * ops_generation_ledger [medido 2026-11-07].
+ */
+async function logRenderCost(cfg, { brandId, jobId, pieceId, platform, rate, t0, durationS }) {
+  const seconds = Math.round((Date.now() - t0) / 100) / 10;
+  const cost = Math.round(seconds * Number(rate.rate_usd) * 1e6) / 1e6;
+  const ledgerId = await S.rpc(cfg, 'ops_log_generation', {
+    p_lab: LAB, p_brand_id: brandId, p_job_id: jobId, p_piece_id: pieceId, p_output_type: 'video_render',
+    p_platform: platform, p_provider: 'google', p_model_id: RATE_MODEL, p_unit_type: 'per_second',
+    p_input_units: seconds, p_output_units: durationS, p_cost_usd: cost, p_service_id: 'cloud_run',
+    p_status: 'success', p_duration_ms: Date.now() - t0, p_rate_in: rate.rate_usd,
+    p_rate_source: `ops_lab_rates:${rate.rate_id}`, p_rate_effective_at: rate.effective_from,
+    p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
+  });
+  return { cost, ledgerId };
+}
+
+/**
+ * Capas de texto editables (contrato v1.3.0, §4 ter): lee el dato de la marca (presets, paleta, tipografía, tokens de
+ * identidad y la zona segura del canal), baja sus fuentes y arma el guion ASS. Todo ANTES de gastar en proveedores.
+ * El canal de la zona segura sale del perfil de la plataforma (`platform_format_profiles.video_text_canal`, migración
+ * 20261116130000 de unrlvl-iid-functions; no `image_canal`, que es el canal de los presets de imagen); si el perfil no lo
+ * declara, del pedido (`params.safe_zone_canal`); sin ninguno → VIDEOLAB_BAD_REQUEST.
+ */
+async function prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers, timeline, durationMs, work }) {
+  const canal = profile?.video_text_canal ?? params.safe_zone_canal ?? null;
+  if (!canal) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el perfil de ${params.platform}/reel no declara canal de zona segura: el pedido necesita params.safe_zone_canal`);
+  const zonas = await S.select(cfg, `imagelab_overlay_tokens?canal=eq.${enc(canal)}&active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=brand_id,tokens`);
+  const zona = zonas.find((z) => z.brand_id === brandId) ?? zonas.find((z) => z.brand_id == null);
+  const safeZone = zona?.tokens?.layout?.safe_zone_pct;
+  if (!safeZone) throw new RenderError('VIDEOLAB_BAD_REQUEST', `imagelab_overlay_tokens no tiene safe_zone_pct para el canal ${canal}`);
+  const [marca] = await S.select(cfg, `imagelab_overlay_tokens?brand_id=eq.${enc(brandId)}&canal=is.null&active=eq.true&select=tokens`);
+  const keys = presetKeysOf(textLayers);
+  const presets = keys.length ? await S.select(cfg, `videolab_text_presets?preset_key=in.(${keys.map((k) => `"${enc(k)}"`).join(',')})` +
+    `&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=*`) : [];
+  const palette = await S.select(cfg, `brand_palette?brand_id=eq.${enc(brandId)}&select=role,hex`);
+  const typography = await S.select(cfg, `brand_typography?brand_id=eq.${enc(brandId)}&select=role,font_family,css_import`);
+  // Las fuentes de los roles que piden los presets, con sus métricas reales; si una no se puede leer, la medida
+  // conservadora (sobrestima: nunca deja texto fuera de la zona segura).
+  const fontsDir = join(work, 'fonts');
+  const measures = {};
+  let metrics = 'font';
+  for (const role of fontRolesNeeded(textLayers, presets, brandId)) {
+    const row = typography.find((t) => t.role === role);
+    if (!row?.font_family || !row?.css_import) throw new RenderError('VIDEOLAB_BAD_REQUEST', `brand_typography no tiene el rol ${role} (familia y css_import) para la marca ${brandId}`);
+    const { file } = await brandFontFile({ cssImport: row.css_import, family: row.font_family, dir: fontsDir });
+    try { measures[row.font_family] = ttfMeasure(readFileSync(file)); } catch { metrics = 'estimate'; }
+  }
+  const measure = (text, px, o) => (measures[o?.family] ?? estimateMeasure)(text, px, o);
+  const plan = buildTextLayers({ textLayers, timeline, presets, brandId, palette, typography, tokens: marca?.tokens ?? null,
+    safeZone, canvas, durationMs, measure });
+  const ass = join(work, 'text_layers.ass');
+  writeFileSync(ass, plan.ass);
+  return { ass, fontsDir, filters: plan.filters, blocks: plan.blocks, metrics, canal };
+}
+
+/**
+ * Modo `text_layers` (contrato v1.3.0, §4 ter.1): SÓLO texto sobre el video limpio de la pieza. No llama a HeyGen, Veo
+ * ni ImageLab. Baja `previousOutputs.base_video`, dibuja las capas, valida con ffprobe, sube MP4 y portada con el mismo
+ * esquema de rutas y asienta el costo del render.
+ */
+async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work, t0 }) {
+  if (!brandId || !params.platform || params.format !== 'reel') {
+    throw new RenderError('VIDEOLAB_BAD_REQUEST', 'faltan brandId, params.platform o params.format=reel');
+  }
+  if (!prev.base_video?.url) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'falta previousOutputs.base_video.url (el video limpio)');
+  validateTextLayers(prev.text_layers, { words: timelineWords(prev.timeline) });
+  const [profile] = await S.select(cfg, `platform_format_profiles?platform=eq.${enc(params.platform)}&format=eq.reel&active=eq.true&select=*`, 'intel');
+  const canvas = resolveCanvas(params.canvas ?? null, profile);
+  const rate = await renderRate(cfg);
+  const inPath = join(work, 'base.mp4');
+  writeFileSync(inPath, await S.download(prev.base_video.url, 'video base'));
+  const baseProbe = await ffprobe(inPath);
+  const bv = (baseProbe.streams ?? []).find((x) => x.codec_type === 'video');
+  if (!bv || bv.width !== canvas.width || bv.height !== canvas.height) {
+    throw new RenderError('VIDEOLAB_CANVAS_MISMATCH', `el video base mide ${bv?.width}x${bv?.height}, el perfil ${canvas.width}x${canvas.height}`);
+  }
+  const durationMs = Math.round(Number(baseProbe.format?.duration ?? 0) * 1000);
+  const tlr = await prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers: prev.text_layers, timeline: prev.timeline ?? null, durationMs, work });
+  const outPath = join(work, 'out.mp4');
+  await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input: inPath, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out: outPath })], { maxBuffer: 1 << 26 });
+  const bytes = statSync(outPath).size;
+  const probe = await ffprobe(outPath);
+  const fallas = validateOutput(probe, canvas, bytes);
+  if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
+  const durationS = Number(probe.format.duration);
+  const poster = join(work, 'poster.jpg');
+  await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(Math.min(1.5, durationS / 2)), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
+  const base = `videolab/${brandId}/${pieceId ?? 'sin-pieza'}/${jobId}`;
+  const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');
+  const posterUrl = await S.upload(cfg, `${base}.jpg`, readFileSync(poster), 'image/jpeg');
+  const { cost, ledgerId } = await logRenderCost(cfg, { brandId, jobId, pieceId, platform: params.platform, rate, t0, durationS });
+  const v = probe.streams.find((x) => x.codec_type === 'video');
+  return {
+    mode: 'text_layers',
+    video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
+      duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes },
+    clean_video: { url: prev.base_video.url },
+    text_layers: prev.text_layers,
+    text_layout: { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks },
+    provider: 'unrlvl', model_id: RATE_MODEL,
+    cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
+  };
+}
+
 export async function renderJob(jobId, env = process.env) {
   const t0 = Date.now();
   const cfg = S.config(env);
@@ -68,6 +184,13 @@ export async function renderJob(jobId, env = process.env) {
   const work = mkdtempSync(join(tmpdir(), 'videolab-'));
 
   try {
+    // Modo sólo texto (v1.3.0): otro camino, sin preset de estilo ni proveedores.
+    if (params.mode === 'text_layers') {
+      const output = await textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work, t0 });
+      await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });
+      return output;
+    }
+    if (params.mode != null) throw new RenderError('VIDEOLAB_BAD_REQUEST', `params.mode desconocido: ${params.mode}`);
     if (!brandId || !params.platform || params.format !== 'reel' || !params.video_style) {
       throw new RenderError('VIDEOLAB_BAD_REQUEST', 'faltan brandId, params.platform, params.format=reel o params.video_style');
     }
@@ -115,8 +238,7 @@ export async function renderJob(jobId, env = process.env) {
     }
     const [profile] = await S.select(cfg, `platform_format_profiles?platform=eq.${enc(params.platform)}&format=eq.reel&active=eq.true&select=*`, 'intel');
     const canvas = resolveCanvas(params.canvas ?? null, profile);
-    const rate = (await S.rpc(cfg, 'ops_resolve_rate', { p_lab: LAB, p_model_id: RATE_MODEL, p_unit_type: 'per_second', p_at: new Date().toISOString().slice(0, 10) }))?.[0];
-    if (!rate?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${RATE_MODEL} en ops_lab_rates`);
+    const rate = await renderRate(cfg);
     const [il] = await S.select(cfg, `lab_configs?lab_key=eq.imagelab&select=api_endpoint`);
     if (!il?.api_endpoint) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'lab_configs no tiene el api_endpoint de imagelab');
 
@@ -149,6 +271,18 @@ export async function renderJob(jobId, env = process.env) {
         if (!rates[rid]?.rate_usd) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', `sin tarifa vigente de ${rid} en ops_lab_rates`);
       }
       pod = { plan, rates };
+    }
+
+    // Conversación (v1.3.0): el timeline de la voz y, si el pedido trae capas de texto, su guion — antes de gastar.
+    let timeline = null;
+    let tlr = null;
+    if (isConversation) {
+      timeline = conversationTimeline({ turns: prev.turns, cast: params.cast });
+      if (prev.text_layers) {
+        tlr = await prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers: prev.text_layers,
+          timeline: { ...timeline, ...(Array.isArray(prev.timeline?.faces) ? { faces: prev.timeline.faces } : {}) },
+          durationMs: pod.plan.totalMs, work });
+      }
     }
 
     // Entradas.
@@ -188,7 +322,8 @@ export async function renderJob(jobId, env = process.env) {
     const txt = overlayTextFrom(prev.on_screen_text);
     let layer = null;
     let layerMeta = null;
-    if (txt.headline) {
+    // Con capas de texto editables en la conversación, el texto lo dibujan ellas: no se pide la capa de ImageLab.
+    if (txt.headline && !tlr) {
       const res = await fetch(`${il.api_endpoint.replace(/\/+$/, '')}/api/compose`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brand_id: brandId, canal: String(params.platform).toUpperCase(), image_url: frameUrl,
@@ -210,6 +345,7 @@ export async function renderJob(jobId, env = process.env) {
     // Fabricación, según el productor.
     const outPath = join(work, 'out.mp4');
     let durationS;
+    let cleanVideo = null;
     const providerRows = [];
     if (isConversation) {
       // El tope del productor, con lo que va a cobrar cada motor.
@@ -263,11 +399,21 @@ export async function renderJob(jobId, env = process.env) {
       const audioIn = turnAudio.flatMap((a) => ['-i', a]);
       const aChain = turnAudio.map((_, i) => `[${i + 1}:a]aresample=48000,aformat=channel_layouts=stereo[a${i}]`).join(';');
       const aCat = `${turnAudio.map((_, i) => `[a${i}]`).join('')}concat=n=${turnAudio.length}:v=0:a=1[aout]`;
-      const vChain = layer ? `[0:v][${turnAudio.length + 1}:v]overlay=0:0,format=yuv420p[vout]` : `[0:v]format=yuv420p[vout]`;
-      await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', joined, ...audioIn, ...(layer ? ['-i', layer] : []),
-        '-filter_complex', `${aChain};${aCat};${vChain}`, '-map', '[vout]', '-map', '[aout]',
+      // 1) El montaje LIMPIO (sin capa ni subtítulos), que se sube antes de dibujar nada encima: es la base del modo
+      //    text_layers para volver a escribir el texto sin regenerar tomas (v1.3.0).
+      const cleanPath = join(work, 'clean.mp4');
+      await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', joined, ...audioIn,
+        '-filter_complex', `${aChain};${aCat};[0:v]format=yuv420p[vout]`, '-map', '[vout]', '-map', '[aout]',
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k',
-        '-shortest', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
+        '-shortest', '-movflags', '+faststart', cleanPath], { maxBuffer: 1 << 26 });
+      cleanVideo = { url: await S.upload(cfg, `${base}_clean.mp4`, readFileSync(cleanPath), 'video/mp4'), storage_path: `${base}_clean.mp4` };
+      // 2) El final: las capas de texto editables, o la capa de ImageLab, encima del limpio; sin ninguna, el limpio.
+      if (tlr) {
+        await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input: cleanPath, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out: outPath })], { maxBuffer: 1 << 26 });
+      } else if (layer) {
+        await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', cleanPath, '-i', layer, '-filter_complex', '[0:v][1:v]overlay=0:0,format=yuv420p[vout]',
+          '-map', '[vout]', '-map', '0:a', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
+      } else copyFileSync(cleanPath, outPath);
       durationS = pod.plan.totalMs / 1000;
     } else if (producer === 'render') {
       const plan = planRender({ preset, canvas, inputs: { images: imagePaths, layer, voice, music, out: outPath } });
@@ -337,19 +483,8 @@ export async function renderJob(jobId, env = process.env) {
     const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');
     const posterUrl = await S.upload(cfg, `${base}.jpg`, readFileSync(poster), 'image/jpeg');
 
-    // Costo: segundos de cómputo del job a la tarifa vigente.
-    const seconds = Math.round((Date.now() - t0) / 100) / 10;
-    const cost = Math.round(seconds * Number(rate.rate_usd) * 1e6) / 1e6;
-    // El libro se escribe por ops_log_generation (SECURITY DEFINER), igual que los demás labs: service_role no
-    // tiene INSERT directo sobre ops_generation_ledger [medido 2026-11-07].
-    const ledgerId = await S.rpc(cfg, 'ops_log_generation', {
-      p_lab: LAB, p_brand_id: brandId, p_job_id: jobId, p_piece_id: pieceId, p_output_type: 'video_render',
-      p_platform: params.platform, p_provider: 'google', p_model_id: RATE_MODEL, p_unit_type: 'per_second',
-      p_input_units: seconds, p_output_units: durationS, p_cost_usd: cost, p_service_id: 'cloud_run',
-      p_status: 'success', p_duration_ms: Date.now() - t0, p_rate_in: rate.rate_usd,
-      p_rate_source: `ops_lab_rates:${rate.rate_id}`, p_rate_effective_at: rate.effective_from,
-      p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
-    });
+    // Costo: segundos de cómputo del job a la tarifa vigente (por ops_log_generation, ver logRenderCost).
+    const { cost, ledgerId } = await logRenderCost(cfg, { brandId, jobId, pieceId, platform: params.platform, rate, t0, durationS });
     const ledgerIds = [ledgerId];
     let totalCost = cost;
     for (const r of providerRows) {
@@ -374,6 +509,8 @@ export async function renderJob(jobId, env = process.env) {
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
       text_layer: layerMeta, unplaced_text: txt.unplaced,
+      clean_video: cleanVideo, timeline, text_layers: tlr ? prev.text_layers : null,
+      text_layout: tlr ? { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks } : null,
       cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };
     await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });

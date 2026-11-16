@@ -1,11 +1,15 @@
-# CONTRATO DE VIDEOLAB — v1.2.0 (2026-11-12)
+# CONTRATO DE VIDEOLAB — v1.3.0 (2026-11-16)
+
+> Versión anterior de esta cabecera, conservada: «CONTRATO DE VIDEOLAB — v1.2.0 (2026-11-12)». Los cambios de cada
+> versión están en §10.
 
 **Qué es:** cómo se le pide un video a VideoLab y cómo lo entrega. Lo consumen el carril IID
 (`unrlvl-iid-functions`), VoiceLab (le da voz y música) y SocialLab (publica el MP4).
 **Forma legible por máquina:** `contract/videolab.contract.json`. El test `tests/contrato_test.mjs`
 comprueba que este documento y ese archivo dicen lo mismo.
 **Decisiones de Sam en las que se apoya:** 2026-10-31, 2026-11-01 y 2026-11-07 (puntos 1–14 confirmados;
-los respaldos no se implementan hasta que hagan falta; UGC y formatos de producto en la primera entrega).
+los respaldos no se implementan hasta que hagan falta; UGC y formatos de producto en la primera entrega), y
+2026-11-16 (texto en pantalla editable por pieza, §4 ter).
 
 ---
 
@@ -52,6 +56,7 @@ POST /api/execute
     image?:  { url },                   // imagen limpia (sin texto) de ImageLab
     images?: [{ url, role? }],          // varias imágenes (p. ej. before_after)
     video_prompt?: string,              // movimiento de la escena para `generative` (obligatorio ahí), ya juzgado
+    text_layers?: { … },                // capas de texto editables (§4 ter); en `conversation` se dibujan sobre el final
     voice?:  { audio_url, duration_ms, alignment?, person_id?, consent_ref? },   // de VoiceLab
     music?:  { audio_url, duration_ms, loudness_lufs?, license? }                // de VoiceLab
   }
@@ -63,6 +68,9 @@ POST /api/execute
 - El texto (`voice_script`, `on_screen_text`) llega **ya juzgado** y se usa **tal cual**. VideoLab no
   escribe, recorta, traduce ni completa texto. Si un tramo no entra → `VIDEOLAB_TEXT_DOES_NOT_FIT` con su `order`.
 - `role` y `emphasis` usan el vocabulario del compositor de ImageLab, que es quien dibuja la capa de texto.
+- **Modo sólo texto (v1.3.0).** Con `params.mode = 'text_layers'` el pedido tiene otra forma (§4 ter.1): no lleva
+  `video_style`, `voice_script` ni `on_screen_text`, y `parentJobId` es opcional. Cualquier otro `params.mode` →
+  `VIDEOLAB_BAD_REQUEST`.
 
 ## 3. Estilos de video y productores
 
@@ -141,6 +149,134 @@ POST /api/execute
 - **Montaje:** los cortes en orden, la voz de los turnos seguida, y la capa de texto de ImageLab encima si hay titular.
   La salida suma `podcast: { location_blueprint_id, segments }`.
 
+## 4 ter. Texto en pantalla editable — capas de texto (v1.3.0, decisión de Sam 2026-11-16)
+
+Objetivo: en cada pieza, el operador cambia el texto en pantalla (gancho, rol de cada persona, subtítulos, títulos
+clave, CTA y franja) y VideoLab vuelve a renderizar **sólo el texto** sobre el video limpio, sin regenerar tomas. Lo
+dibuja `render/src/textlayers.mjs` como un guion ASS (libass) más un `drawbox` para la franja.
+
+### 4 ter.1 Modo `text_layers` (no llama a HeyGen, Veo ni ImageLab)
+
+```
+POST /api/execute                                  // mismo transporte: 202 + lab_jobs (§1)
+{ brandId, pieceId, parentJobId?,                  // parentJobId opcional: lo pide el Orchestrator desde la pieza
+  params: { mode: 'text_layers', platform, format: 'reel', safe_zone_canal?, canvas? },
+  previousOutputs: {
+    base_video: { url },                           // el video limpio (clean_video de la conversación)
+    timeline?:  { words: [{ text, start_ms, end_ms, person_id }], turns: [{ person_id, start_ms, end_ms }],
+                  faces?: [{ box: { x, y, w, h }, start_ms?, end_ms?, person_id? }] },   // cajas en % del lienzo
+    text_layers: {
+      hook?:       { text, preset_key, start_ms, end_ms, emphasis?: [texto] } | null,
+      roles?:      [{ person_id, text, show, at_ms, dur_ms, preset_key }],
+      captions?:   { enabled, preset_key, accent_role? } | null,     // accent_role: rol de brand_palette
+      key_titles?: [{ text, at_ms, dur_ms, preset_key }],
+      cta?:        { text, at_ms, dur_ms?, preset_key } | null,       // sin dur_ms, hasta el final
+      identity?:   { strip, strip_role? } } } }                       // strip_role: rol de brand_palette
+```
+
+**Reglas de la forma** (las comprueba `api/execute` con la misma función que el job, `validateTextLayers`):
+`preset_key` y `text` no vacíos; `start_ms`, `at_ms` ≥ 0; `end_ms` > `start_ms`; `dur_ms` > 0; al menos una capa; un
+rol con `show: false` se ignora; con subtítulos encendidos, `timeline.words` es obligatorio. Si no →
+`VIDEOLAB_BAD_REQUEST` y no se crea job.
+
+**Salida** (`lab_jobs.output_parsed`):
+
+```
+{ mode: 'text_layers',
+  video: { url, storage_path, poster_url, width, height, fps, duration_ms, codec, audio, bytes },
+  clean_video: { url },                     // el base_video recibido
+  text_layers: <eco del pedido>,
+  text_layout: { canal, metrics: 'font' | 'estimate', blocks: [{ layer, preset_key, rect, start_ms, end_ms }] },
+  provider: 'unrlvl', model_id: 'videolab-render-cloud-run', cost_usd, ledger_ids }
+```
+
+Mismo esquema de rutas (`videolab/<brandId>/<pieceId>/<job_id>.mp4` y `.jpg`), misma especificación del MP4 (§5) y un
+asiento del render en `ops_generation_ledger` por `ops_log_generation` (§6).
+
+### 4 ter.2 Conversación: video limpio y timeline
+
+En `conversation`, antes de dibujar nada encima, el job sube el montaje **limpio** (cortes + voces, sin capa ni
+subtítulos) en `videolab/<brandId>/<pieceId>/<job_id>_clean.mp4` y la salida suma:
+
+```
+clean_video: { url, storage_path },
+timeline: { words: [{ text, start_ms, end_ms, person_id }],            // tiempos absolutos del video final
+            turns: [{ turn, seat, person_id, start_ms, end_ms }],
+            turns_without_words: [índice] },                           // turnos sin voice.alignment.words
+text_layers: <eco> | null, text_layout: { … } | null
+```
+
+Las palabras salen de `turns[].voice.alignment.words` de VoiceLab, sin las etiquetas de interpretación entre corchetes.
+Si el pedido trae `previousOutputs.text_layers`, las capas se dibujan sobre el final con el mismo módulo y **no se pide
+la capa de ImageLab** (el texto editable la sustituye). El guion se arma ANTES de llamar a HeyGen: un preset, un color o
+una fuente que falta falla sin gastar.
+
+### 4 ter.3 Presets — `public.videolab_text_presets` y el esquema de `spec`
+
+Los presets son **dato**: la fila de la marca (`brand_id`) manda sobre la del sistema (`brand_id` NULL); una fila de la
+marca inactiva apaga el preset para esa marca. Inexistente, inactivo, retirado (`status = 'retired'`) o de otra capa →
+`VIDEOLAB_BAD_REQUEST`. La siembra (17 presets de sistema, `status = 'proposed'`) está en `docs/text_presets_seed.json`,
+para que la migración de datos la copie tal cual.
+
+**Esquema de `spec`** (todas las claves son opcionales salvo donde se indica; los porcentajes son del lienzo):
+
+| Clave | Tipo | Qué hace | Por defecto |
+|---|---|---|---|
+| `entry` | `fade` \| `pop` \| `pop_words` \| `mask` \| `type` \| `punch` \| `slide` \| `rise` \| `draw` | animación de entrada | `fade` |
+| `duration_ms` | número | duración de la entrada (en `type`, el tiempo total de escritura) | 300 |
+| `stagger_ms` | número | separación entre palabras (`pop_words`) o letras (`type`) | 120 / según `duration_ms` |
+| `scale_from` | número | escala inicial (`pop`, `pop_words`, `punch`) | 0,85 (`punch`: 1,3) |
+| `blur_from` | número | desenfoque inicial (`punch`) | 4 |
+| `slide_from_pct` | número | desplazamiento inicial (`slide`: % del ancho; `rise`: % del alto) | 3 / 1,5 |
+| `exit_ms` | número | fundido de salida | 200 |
+| `font_role` | rol de `brand_typography` | familia de la marca | `display` en hook, key_title y cta; `body` en role y caption |
+| `bold`, `uppercase` | booleano | peso y mayúsculas de presentación (el texto no se reescribe) | `false` |
+| `size_pct`, `min_size_pct` | número (% del alto) | tamaño; si no cabe, baja de 0,2 en 0,2 hasta el mínimo | 4 / `size_pct` |
+| `max_lines` | entero | líneas como máximo | 3 (caption 2) |
+| `max_width_pct` | número (% del ancho seguro) | ancho máximo del bloque | 100 (role 80) |
+| `line_height` | número | interlineado para la geometría | 1,2 |
+| `anchor` | `top` \| `center` \| `above_captions` | dónde va el bloque | hook `top`, key_title `center`, cta `above_captions` |
+| `align` | `left` \| `center` | alineación (el rol siempre `left`) | `center` |
+| `color`, `emphasis_color` | color | texto y palabras de `emphasis` | `text` (role `text_body`) / `accent` |
+| `outline` | `{ color, width_pct }` | contorno | sin contorno |
+| `shadow` | `{ color, depth_pct, alpha }` | sombra | sin sombra |
+| `box` | `{ color, opacity, pad_x_pct, pad_y_pct, radius_pct }` | caja detrás del texto | sin caja |
+| `rule` | `{ color, width_pct, thickness_pct, gap_pct, position: above \| below }` | filete | sin filete |
+| `loop` | `{ type: 'shimmer', period_ms, intensity }` | latido suave de la caja (CTA) | sin latido |
+| `split_on` | texto | corta el texto en líneas en ese separador (rol en dos líneas) | — |
+| `group_min`, `group_max`, `max_gap_ms` | números | subtítulos: grupos de 3–4 palabras, corte en puntuación, cambio de persona o pausa | 3 / 4 / 700 |
+| `active_word` | `{ color, scale }` | subtítulos: la palabra que suena | `{ color: 'accent', scale: 1 }` |
+
+**Colores.** Un color es un **hueco** que se resuelve con el dato de la marca, `palette:<rol>` (sólo en filas de
+marca) o un hex neutro escrito en el dato (p. ej. negro de contorno). Huecos: `text` (`tokens.palette.headline` de
+`imagelab_overlay_tokens` de la marca), `text_body` (`tokens.palette.subheadline`), `accent` (`captions.accent_role` del
+pedido, si no `tokens.palette.headline_emphasis`, si no `tokens.layout.rule.palette`), `scrim`
+(`tokens.layout.scrim.palette`), `rule` (`tokens.layout.rule.palette`) e `identity` (`identity.strip_role` del pedido, si
+no `tokens.identity.palette`). Cada rol se busca en `public.brand_palette`; un hueco sin rol o un rol que la marca no
+tiene → `VIDEOLAB_BAD_REQUEST`.
+
+**Fuentes.** `brand_typography` por rol (`font_family`, `css_import`); sin la fila → `VIDEOLAB_BAD_REQUEST`. El texto se
+mide con las métricas reales de la fuente (TrueType/OpenType); si no se pueden leer, con una medida conservadora que
+sobrestima (`text_layout.metrics = 'estimate'`).
+
+### 4 ter.4 Geometría y anti-choque
+
+- **Zona segura:** `imagelab_overlay_tokens.tokens.layout.safe_zone_pct` del canal. El canal sale de
+  `intel.platform_format_profiles.video_text_canal` (columna propia desde la migración `20261116130000`; `image_canal` es el canal de los presets de imagen y no se usa aquí); si el perfil no lo declara (antes de esa migración, los perfiles `reel` no lo declaraban
+  [medido 2026-11-16]), del pedido (`params.safe_zone_canal`); sin ninguno → `VIDEOLAB_BAD_REQUEST`. La fila de la marca
+  para ese canal manda sobre la del sistema.
+- Todo bloque, con su caja, contorno, sombra y filete, cae **dentro** de la zona segura; cada evento lleva además un
+  recorte a la zona segura. Un texto que no entra con `max_lines` ni con `min_size_pct` → `VIDEOLAB_TEXT_DOES_NOT_FIT`
+  (no se corta ni se desborda).
+- **Subtítulos:** banda fija al fondo de la zona segura, alto = `max_lines` líneas al tamaño del preset.
+- **Rol:** encima de la banda con un margen ≥ 2 % del alto, alineado al borde seguro izquierdo. Si `timeline.faces`
+  declara una cara en su tramo (o hay otro texto en ese tramo), sube hasta no tocarla; sin lugar →
+  `VIDEOLAB_TEXT_DOES_NOT_FIT`. Su entrada dura ≤ 350 ms y no rebota (un preset de rol más lento →
+  `VIDEOLAB_BAD_REQUEST`).
+- Dos bloques que coinciden en el tiempo no pueden solaparse en el espacio → `VIDEOLAB_TEXT_DOES_NOT_FIT`.
+- **Franja de identidad:** `drawbox` con `tokens.identity` de la marca (`mode` `edge_left` \| `edge_right`, `width_pct`,
+  `full_bleed`); sin `identity` en los tokens → `VIDEOLAB_BAD_REQUEST`.
+
 ## 5. Salida
 
 En `completed`, `lab_jobs.output_parsed`:
@@ -154,6 +290,9 @@ En `completed`, `lab_jobs.output_parsed`:
   avatar_subject: { mode, engine, look_id, avatar_type } | null, // gemelo o foto, y con qué motor (productor avatar)
   text_layer: { compositor_version, text_rect, markers } | null,   // eco de ImageLab
   unplaced_text: [{ order, role }],           // tramos sin ranura en el compositor (p. ej. un cta): no se inventan
+  clean_video: { url, storage_path } | null,  // v1.3.0: montaje limpio (conversation)
+  timeline: { words, turns, turns_without_words } | null,   // v1.3.0 (conversation)
+  text_layers, text_layout,                   // v1.3.0: eco y geometría de las capas de texto, o null
   cost_usd, ledger_ids: [...]
 }
 ```
@@ -212,3 +351,15 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
    `generative`, `avatar`, `person_consents`, `synthetic_person`.
 3. **¿Eje o instancia?** Eje en el contrato y el código; instancia (Veo, HeyGen, la persona, el tope) en el dato.
 4. **¿Cuántas marcas hay en las enumeraciones?** Cero. `tests/contrato_test.mjs` falla si aparece una.
+
+## 10. Registro de cambios
+
+- **v1.3.0 (2026-11-16)** — Texto en pantalla editable por pieza (decisión de Sam 2026-11-16). Nuevo `params.mode =
+  'text_layers'` (§4 ter.1): sólo texto sobre el video limpio, sin proveedores. `conversation` sube el montaje limpio
+  (`clean_video`), devuelve el `timeline` de la voz y aplica `previousOutputs.text_layers` sobre el final (§4 ter.2).
+  Presets de texto como dato en `public.videolab_text_presets` con el esquema de `spec` de §4 ter.3 y la siembra en
+  `docs/text_presets_seed.json`. Geometría y anti-choque en §4 ter.4. Sin `error_label` nuevos.
+- **v1.2.0 (2026-11-12)** — Técnicas de escena en `conversation` (§4 bis).
+- **v1.1.0 (2026-11-11)** — Estilo `conversation` (§4 bis).
+- **v1.0.5 (2026-11-11)** — Gemelo digital del avatar con el motor elegido (§4).
+- **v1.0.0–v1.0.4** — Transporte asíncrono, pedido, estilos, productores, UGC, salida, costo y errores (§1–§7).

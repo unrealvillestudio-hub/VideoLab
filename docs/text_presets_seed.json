@@ -1,0 +1,598 @@
+{
+  "_doc": "Siembra de public.videolab_text_presets (contrato de VideoLab v1.3.0, §4 ter.3). La migración de datos copia cada fila TAL CUAL: brand_id NULL (preset de sistema), status proposed. El esquema de spec está en docs/CONTRACT.md; tests/textlayers_test.mjs comprueba que cada spec se interpreta y que aquí no aparece ninguna marca.",
+  "version": "1.3.0",
+  "date": "2026-11-16",
+  "rows": [
+    {
+      "preset_key": "hook_pop_words",
+      "layer": "hook",
+      "name": "Palabras que saltan",
+      "description": "Cada palabra aparece con un salto corto, una tras otra; las palabras de énfasis van en el acento.",
+      "spec": {
+        "entry": "pop_words",
+        "duration_ms": 220,
+        "stagger_ms": 140,
+        "scale_from": 0.6,
+        "exit_ms": 200,
+        "size_pct": 5.6,
+        "min_size_pct": 3.8,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.12,
+        "anchor": "top",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 10,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "hook_mask_wipe",
+      "layer": "hook",
+      "name": "Barrido con máscara",
+      "description": "El gancho se descubre de izquierda a derecha sobre una caja de la marca.",
+      "spec": {
+        "entry": "mask",
+        "duration_ms": 450,
+        "exit_ms": 200,
+        "size_pct": 5.2,
+        "min_size_pct": 3.6,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.12,
+        "anchor": "top",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.82,
+          "pad_x_pct": 2,
+          "pad_y_pct": 1,
+          "radius_pct": 0.6
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 20,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "hook_type_on",
+      "layer": "hook",
+      "name": "Máquina de escribir",
+      "description": "El gancho se escribe letra a letra.",
+      "spec": {
+        "entry": "type",
+        "duration_ms": 900,
+        "stagger_ms": 45,
+        "exit_ms": 200,
+        "size_pct": 5,
+        "min_size_pct": 3.6,
+        "max_lines": 3,
+        "bold": false,
+        "line_height": 1.15,
+        "anchor": "top",
+        "align": "left",
+        "color": "text",
+        "emphasis_color": "accent",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 30,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "hook_punch_settle",
+      "layer": "hook",
+      "name": "Golpe y asiento",
+      "description": "Entra grande y desenfocado y se asienta en su tamaño en un cuarto de segundo.",
+      "spec": {
+        "entry": "punch",
+        "duration_ms": 260,
+        "scale_from": 1.35,
+        "blur_from": 6,
+        "exit_ms": 200,
+        "size_pct": 5.8,
+        "min_size_pct": 4,
+        "max_lines": 3,
+        "bold": true,
+        "uppercase": true,
+        "line_height": 1.08,
+        "anchor": "top",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 40,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "hook_line_slide",
+      "layer": "hook",
+      "name": "Línea que desliza",
+      "description": "El gancho entra deslizando desde la izquierda con el filete de la marca debajo.",
+      "spec": {
+        "entry": "slide",
+        "duration_ms": 380,
+        "slide_from_pct": 4,
+        "exit_ms": 200,
+        "size_pct": 5.2,
+        "min_size_pct": 3.6,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.12,
+        "anchor": "top",
+        "align": "left",
+        "color": "text",
+        "emphasis_color": "accent",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "rule": {
+          "color": "rule",
+          "width_pct": 14,
+          "thickness_pct": 0.3,
+          "gap_pct": 1,
+          "position": "below"
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 50,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "role_chip_slide",
+      "layer": "role",
+      "name": "Chip que desliza",
+      "description": "Nombre y rol en una pastilla que entra deslizando.",
+      "spec": {
+        "entry": "slide",
+        "duration_ms": 300,
+        "slide_from_pct": 2,
+        "exit_ms": 250,
+        "size_pct": 2.4,
+        "min_size_pct": 1.8,
+        "max_lines": 2,
+        "max_width_pct": 80,
+        "bold": true,
+        "line_height": 1.2,
+        "color": "text_body",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.85,
+          "pad_x_pct": 1.8,
+          "pad_y_pct": 0.7,
+          "radius_pct": 1.2
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 10,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "role_rule_draw",
+      "layer": "role",
+      "name": "Filete que se dibuja",
+      "description": "Un filete de la marca se dibuja sobre el nombre y el texto aparece.",
+      "spec": {
+        "entry": "draw",
+        "duration_ms": 320,
+        "exit_ms": 250,
+        "size_pct": 2.4,
+        "min_size_pct": 1.8,
+        "max_lines": 2,
+        "max_width_pct": 80,
+        "bold": false,
+        "line_height": 1.2,
+        "color": "text_body",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        },
+        "rule": {
+          "color": "rule",
+          "width_pct": 10,
+          "thickness_pct": 0.25,
+          "gap_pct": 0.8,
+          "position": "above"
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 20,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "role_fade_rise",
+      "layer": "role",
+      "name": "Aparece y sube",
+      "description": "El rótulo aparece subiendo apenas.",
+      "spec": {
+        "entry": "rise",
+        "duration_ms": 280,
+        "slide_from_pct": 1,
+        "exit_ms": 250,
+        "size_pct": 2.4,
+        "min_size_pct": 1.8,
+        "max_lines": 2,
+        "max_width_pct": 80,
+        "bold": false,
+        "line_height": 1.2,
+        "color": "text_body",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 30,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "role_card_two_line",
+      "layer": "role",
+      "name": "Tarjeta en dos líneas",
+      "description": "Tarjeta con el nombre arriba y el rol debajo (corta en « — »).",
+      "spec": {
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 250,
+        "split_on": " — ",
+        "size_pct": 2.3,
+        "min_size_pct": 1.7,
+        "max_lines": 3,
+        "max_width_pct": 80,
+        "bold": true,
+        "line_height": 1.25,
+        "color": "text_body",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.88,
+          "pad_x_pct": 2,
+          "pad_y_pct": 0.9,
+          "radius_pct": 0.8
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 40,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "role_label_minimal",
+      "layer": "role",
+      "name": "Etiqueta mínima",
+      "description": "Texto pequeño sin caja, con sombra suave.",
+      "spec": {
+        "entry": "fade",
+        "duration_ms": 200,
+        "exit_ms": 200,
+        "size_pct": 2.1,
+        "min_size_pct": 1.6,
+        "max_lines": 2,
+        "max_width_pct": 80,
+        "bold": false,
+        "line_height": 1.2,
+        "color": "text_body",
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 50,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "caption_karaoke_accent",
+      "layer": "caption",
+      "name": "Karaoke con acento",
+      "description": "Grupos de 3–4 palabras; la que suena va en el color de acento y un poco más grande.",
+      "spec": {
+        "group_min": 3,
+        "group_max": 4,
+        "max_gap_ms": 700,
+        "size_pct": 3.6,
+        "min_size_pct": 2.6,
+        "max_lines": 2,
+        "bold": true,
+        "line_height": 1.15,
+        "color": "text",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.2
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        },
+        "active_word": {
+          "color": "accent",
+          "scale": 1.08
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 10,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "caption_box_accent",
+      "layer": "caption",
+      "name": "Caja con acento",
+      "description": "Grupos sobre una caja de la marca; la palabra que suena en el color de acento.",
+      "spec": {
+        "group_min": 3,
+        "group_max": 4,
+        "max_gap_ms": 700,
+        "size_pct": 3.4,
+        "min_size_pct": 2.6,
+        "max_lines": 2,
+        "bold": true,
+        "line_height": 1.15,
+        "color": "text",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.75,
+          "pad_x_pct": 1.6,
+          "pad_y_pct": 0.6,
+          "radius_pct": 0.6
+        },
+        "active_word": {
+          "color": "accent",
+          "scale": 1
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 20,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "caption_clean",
+      "layer": "caption",
+      "name": "Limpio",
+      "description": "Grupos sin caja ni contorno grueso, sólo sombra; la palabra que suena en el acento.",
+      "spec": {
+        "group_min": 3,
+        "group_max": 4,
+        "max_gap_ms": 700,
+        "size_pct": 3.4,
+        "min_size_pct": 2.6,
+        "max_lines": 2,
+        "bold": false,
+        "line_height": 1.15,
+        "color": "text",
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.15,
+          "alpha": 0.6
+        },
+        "active_word": {
+          "color": "accent",
+          "scale": 1
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 30,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "key_title_rule",
+      "layer": "key_title",
+      "name": "Título con filete",
+      "description": "La frase clave aparece con el filete de la marca encima.",
+      "spec": {
+        "entry": "fade",
+        "duration_ms": 350,
+        "exit_ms": 250,
+        "size_pct": 4.6,
+        "min_size_pct": 3.2,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.12,
+        "anchor": "center",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.12,
+          "alpha": 0.45
+        },
+        "rule": {
+          "color": "rule",
+          "width_pct": 12,
+          "thickness_pct": 0.3,
+          "gap_pct": 1.2,
+          "position": "above"
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 10,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "key_title_stamp",
+      "layer": "key_title",
+      "name": "Sello",
+      "description": "La frase clave entra como un sello sobre una caja.",
+      "spec": {
+        "entry": "punch",
+        "duration_ms": 220,
+        "scale_from": 1.25,
+        "blur_from": 4,
+        "exit_ms": 250,
+        "size_pct": 4.4,
+        "min_size_pct": 3.2,
+        "max_lines": 3,
+        "bold": true,
+        "uppercase": true,
+        "line_height": 1.1,
+        "anchor": "center",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.85,
+          "pad_x_pct": 2.2,
+          "pad_y_pct": 1,
+          "radius_pct": 0.4
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 20,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "cta_pill_shimmer",
+      "layer": "cta",
+      "name": "Píldora con brillo",
+      "description": "CTA en una píldora del color de acento que late suave para que no se ignore.",
+      "spec": {
+        "entry": "pop",
+        "duration_ms": 260,
+        "scale_from": 0.8,
+        "exit_ms": 200,
+        "size_pct": 3.8,
+        "min_size_pct": 2.8,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.15,
+        "anchor": "above_captions",
+        "align": "center",
+        "color": "scrim",
+        "box": {
+          "color": "accent",
+          "opacity": 1,
+          "pad_x_pct": 3,
+          "pad_y_pct": 1.2,
+          "radius_pct": 3
+        },
+        "loop": {
+          "type": "shimmer",
+          "period_ms": 1600,
+          "intensity": 0.35
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 10,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    },
+    {
+      "preset_key": "cta_card_rise",
+      "layer": "cta",
+      "name": "Tarjeta que sube",
+      "description": "CTA en una tarjeta que sube con el filete de la marca encima.",
+      "spec": {
+        "entry": "rise",
+        "duration_ms": 380,
+        "slide_from_pct": 2,
+        "exit_ms": 200,
+        "size_pct": 3.6,
+        "min_size_pct": 2.6,
+        "max_lines": 3,
+        "bold": true,
+        "line_height": 1.15,
+        "anchor": "above_captions",
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "box": {
+          "color": "scrim",
+          "opacity": 0.9,
+          "pad_x_pct": 2.6,
+          "pad_y_pct": 1.2,
+          "radius_pct": 1
+        },
+        "rule": {
+          "color": "accent",
+          "width_pct": 10,
+          "thickness_pct": 0.3,
+          "gap_pct": 0.8,
+          "position": "above"
+        }
+      },
+      "brand_id": null,
+      "active": true,
+      "sort": 20,
+      "status": "proposed",
+      "source": "videolab contrato v1.3.0 (2026-11-16)"
+    }
+  ]
+}

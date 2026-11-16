@@ -131,6 +131,72 @@ await caso('un solo tope: contrato max_run_ms = MAX_RUN_MS del job = --task-time
   assert.ok(contrato.error_labels.includes('VIDEOLAB_TIMEOUT'));
 });
 
+// ── modo text_layers (contrato v1.3.0, §4 ter.1) ──
+const TEXTO = () => ({
+  brandId: 'MarcaSintetica', pieceId: '00000000-0000-0000-0000-0000000000aa',
+  params: { mode: 'text_layers', platform: 'meta_fb', format: 'reel', safe_zone_canal: 'CANAL_X' },
+  previousOutputs: {
+    base_video: { url: 'https://x/clean.mp4' },
+    timeline: { words: [{ text: 'hola', start_ms: 0, end_ms: 300, person_id: 'p1' }], turns: [{ person_id: 'p1', start_ms: 0, end_ms: 300 }] },
+    text_layers: {
+      hook: { text: 'Gancho', preset_key: 'hook_pop_words', start_ms: 0, end_ms: 2000 },
+      roles: [{ person_id: 'p1', text: 'Nombre — Rol', show: true, at_ms: 400, dur_ms: 3000, preset_key: 'role_chip_slide' }],
+      captions: { enabled: true, preset_key: 'caption_karaoke_accent', accent_role: 'acento' },
+      key_titles: [{ text: 'Clave', at_ms: 1000, dur_ms: 1500, preset_key: 'key_title_rule' }],
+      cta: { text: 'Reenvíalo', at_ms: 5000, preset_key: 'cta_pill_shimmer' },
+      identity: { strip: true, strip_role: 'franja' },
+    },
+  },
+});
+
+await caso('text_layers: pedido válido sin parentJobId; la fila nace en running con parent_job_id null', () => {
+  assert.equal(C.validateRequest(TEXTO()).params.mode, 'text_layers');
+  const row = C.buildJobRow(TEXTO());
+  assert.equal(row.parent_job_id, null);
+  assert.equal(row.status, 'running');
+  const conPadre = TEXTO(); conPadre.parentJobId = 'no-uuid';
+  assert.throws(() => C.validateRequest(conPadre), /parentJobId/);
+});
+
+await caso('text_layers: obligatorios, preset_key no vacío y tiempos no negativos ⇒ VIDEOLAB_BAD_REQUEST', () => {
+  const malos = [(r) => delete r.previousOutputs.base_video, (r) => { r.params.format = 'story'; }, (r) => delete r.params.platform,
+    (r) => { r.pieceId = 'x'; }, (r) => delete r.previousOutputs.text_layers, (r) => { r.previousOutputs.text_layers = {}; },
+    (r) => { r.previousOutputs.text_layers.hook.preset_key = ''; }, (r) => { r.previousOutputs.text_layers.hook.start_ms = -1; },
+    (r) => { r.previousOutputs.text_layers.roles[0].at_ms = -1; }, (r) => { r.previousOutputs.text_layers.key_titles[0].preset_key = ' '; },
+    (r) => { r.previousOutputs.text_layers.cta.at_ms = -10; }, (r) => { r.previousOutputs.timeline.words = []; },
+    (r) => { r.previousOutputs.timeline.words[0].start_ms = -1; }, (r) => { r.params.mode = 'otro'; },
+    (r) => { r.params.safe_zone_canal = ''; }];
+  for (const [i, m] of malos.entries()) {
+    const r = TEXTO(); m(r);
+    assert.throws(() => C.validateRequest(r), (e) => e.label === 'VIDEOLAB_BAD_REQUEST', `caso ${i}`);
+  }
+  // Sin subtítulos, el timeline no hace falta.
+  const sinSubs = TEXTO(); sinSubs.previousOutputs.text_layers.captions = null; delete sinSubs.previousOutputs.timeline;
+  assert.ok(C.validateRequest(sinSubs));
+});
+
+await caso('conversación: text_layers opcional se valida con la misma forma', () => {
+  const conv = PEDIDO();
+  Object.assign(conv.params, { video_style: 'conversation', location_blueprint_id: 'estudio', cast: { a: 'p1' } });
+  Object.assign(conv.previousOutputs, { shots: [{ shot_id: 's', url: 'u' }], turns: [{ seat: 'a', voice: { audio_url: 'v' }, cuts: [{ shot_id: 's', at_ms: 0 }] }] });
+  assert.ok(C.validateRequest(conv));
+  conv.previousOutputs.text_layers = TEXTO().previousOutputs.text_layers;
+  assert.ok(C.validateRequest(conv));
+  conv.previousOutputs.text_layers.hook.end_ms = 0;
+  assert.throws(() => C.validateRequest(conv), (e) => e.label === 'VIDEOLAB_BAD_REQUEST');
+});
+
+await caso('text_layers: 202 por el mismo camino (fila en lab_jobs y ejecución del job)', async () => {
+  const ll = entorno();
+  const res = resDoble();
+  await handler({ method: 'POST', body: TEXTO() }, res);
+  assert.equal(res.code, 202);
+  const fila = JSON.parse(ll[0].init.body);
+  assert.equal(fila.payload.params.mode, 'text_layers');
+  assert.equal(fila.parent_job_id, null);
+  assert.match(ll[2].url, /videolab-render:run$/);
+});
+
 await caso('marca N+1: la entrada no nombra ninguna marca ni persona', () => {
   const INSTANCIAS = ['NeuroneSCF', 'ForumPHs', 'UnrealvilleStudio', 'LucienSael', 'D7Herbal', 'Patricia', 'Irja', 'Ivette', 'Lucien', 'NSCF', 'FPHS', 'D7H'];
   for (const f of ['api/execute.js', 'api/_lib/execute_core.mjs']) {
