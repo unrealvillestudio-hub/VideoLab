@@ -197,7 +197,9 @@ function seek(t) {
       const w = node._w;
       const active = t >= w.start_ms && t < w.end_ms;
       const s = stateAt(cap.tracks, 'word', t, gb, { i, n: c.words.length });
-      if (active) s.scale *= cap.active_scale;
+      // La palabra activa crece con el TAMAÑO de letra, no con transform: así la línea se recoloca (como libass con
+      // \\fscx) y la palabra no se come el espacio de al lado.
+      node.style.fontSize = active && cap.active_scale !== 1 ? r3(c.g.px * cap.active_scale) + 'px' : '';
       apply(node, s, c.g.px);
       node.style.color = active ? cap.colors.active : cap.colors.text;
     });
