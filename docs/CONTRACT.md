@@ -163,7 +163,7 @@ dibuja `render/src/textlayers.mjs` como un guion ASS (libass) más un `drawbox` 
 
 ```
 POST /api/execute                                  // mismo transporte: 202 + lab_jobs (§1)
-{ brandId, pieceId, parentJobId?,                  // parentJobId opcional: lo pide el Orchestrator desde la pieza
+{ brandId, pieceId, parentJobId?,                  // parentJobId opcional: lab_jobs.id del job que produjo el video (assets.video.lab_job_id)
   params: { mode: 'text_layers', platform, format: 'reel', safe_zone_canal?, canvas? },
   previousOutputs: {
     base_video: { url },                           // el video limpio (clean_video de la conversación)
@@ -370,6 +370,10 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.3.3 · aclaración (2026-11-16)** — `parentJobId`, cuando viaja, es **un `lab_jobs.id`**: el job del lab que produjo
+  el video (en el modo `text_layers`, `assets.video.lab_job_id` de la pieza). Un id de otra tabla viola la FK
+  `lab_jobs_parent_job_id_fkey`; antes salía como `VIDEOLAB_PROVIDER_FAILED` 502 y ahora sale como
+  `VIDEOLAB_BAD_REQUEST` 400, con el motivo. Sin cambio de forma.
 - **v1.3.3 (2026-11-16)** — Bloques colocados a mano (objetivo validado por Sam: una sola ventana de texto para imagen y
   video con X, Y y zoom por bloque). `hook`, `key_titles[i]`, `cta` y `roles[i]` aceptan `place: { x_pct, y_pct, zoom }`
   (centro del bloque en % de la zona segura; zoom 0,7–1,3 sobre el tamaño del preset); `captions.place` sólo `{ zoom }`.
