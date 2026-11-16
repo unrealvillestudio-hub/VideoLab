@@ -177,16 +177,42 @@ export function resolveTextPreset(rows, key, brandId, layer) {
   return row;
 }
 
-/** Los roles tipográficos que necesita el pedido (para bajar sólo esas fuentes). PURO. */
-export function fontRolesNeeded(tl, rows, brandId) {
-  const roles = new Set();
-  const add = (key, layer) => roles.add(resolveTextPreset(rows, key, brandId, layer).spec.font_role ?? DEFAULT_FONT_ROLE[layer]);
+/**
+ * Las caras tipográficas que dibuja el pedido: [{ role, bold }], un elemento por rol; `bold` es true si algún preset
+ * de ese rol pide negrita (entonces se baja también la negrita real de la familia). PURO.
+ */
+export function fontFacesNeeded(tl, rows, brandId) {
+  const roles = new Map();
+  const add = (key, layer) => {
+    const spec = resolveTextPreset(rows, key, brandId, layer).spec;
+    const role = spec.font_role ?? DEFAULT_FONT_ROLE[layer];
+    roles.set(role, (roles.get(role) ?? false) || spec.bold === true);
+  };
   if (tl?.hook) add(tl.hook.preset_key, 'hook');
   for (const r of tl?.roles ?? []) if (r?.show !== false) add(r.preset_key, 'role');
   if (tl?.captions && tl.captions.enabled !== false) add(tl.captions.preset_key, 'caption');
   for (const k of tl?.key_titles ?? []) add(k.preset_key, 'key_title');
   if (tl?.cta) add(tl.cta.preset_key, 'cta');
-  return [...roles];
+  return [...roles].map(([role, bold]) => ({ role, bold }));
+}
+
+/** Los roles tipográficos que necesita el pedido (para bajar sólo esas fuentes). PURO. */
+export function fontRolesNeeded(tl, rows, brandId) {
+  return fontFacesNeeded(tl, rows, brandId).map((f) => f.role);
+}
+
+/**
+ * La medida con la cara con la que se dibuja cada texto. `faces`: { [familia]: { regular, bold } }, cada una una medida
+ * de `ttfMeasure` (o null). Negrita con cara negrita real → se mide con ella, sin engrosar; negrita sin cara real → la
+ * regular engrosada (lo que hace libass); sin la familia → `fallback`. PURO.
+ */
+export function faceMeasure(faces, fallback = estimateMeasure) {
+  return (text, sizePx, o = {}) => {
+    const f = faces?.[o.family];
+    if (!f?.regular) return fallback(text, sizePx, o);
+    if (o.bold && f.bold) return f.bold(text, sizePx, { ...o, bold: false });
+    return f.regular(text, sizePx, o);
+  };
 }
 
 /**
@@ -256,7 +282,8 @@ export function estimateMeasure(text, sizePx, { bold = false } = {}) {
 
 /**
  * Medida REAL con las métricas de la fuente (TrueType/OpenType: `cmap` formato 4 o 12 + `hmtx`). Ignora el
- * interletrado (que casi siempre acorta), suma un 2 % y un 6 % más para negrita sintética. PURO sobre los bytes.
+ * interletrado (que casi siempre acorta), suma un 2 % y un 6 % más para negrita sintética (`bold: true` sólo cuando no
+ * hay cara negrita real: ver `faceMeasure`). PURO sobre los bytes.
  */
 export function ttfMeasure(bytes) {
   const b = Buffer.from(bytes);
