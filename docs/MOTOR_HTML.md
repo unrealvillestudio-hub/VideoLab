@@ -246,7 +246,8 @@ tope, se estudia ese modo (con su `LICENSE` si se reutiliza código).
 
 ## 7. Hallazgos que no son de la F0 (se reportan, no se tocan)
 
-1. **`fonts.mjs` baja la primera cara del `css_import`, no la que pide el preset.** Medido el 2026-11-16 con el
+1. **RESUELTO por el PR #26 (mergeado el 2026-11-16).** Se conserva el hallazgo tal como se escribió:
+   **`fonts.mjs` baja la primera cara del `css_import`, no la que pide el preset.** Medido el 2026-11-16 con el
    mismo agente que usa el job: para una familia display con cursiva en el `css_import`, la primera cara es
    `font-style: italic`; para una familia de texto con `wght@300;…`, la primera es `font-weight: 300`. El gancho
    del video actual sale **en cursiva** y los subtítulos con una negrita sintética sobre la cara fina. Afecta al
@@ -263,13 +264,30 @@ tope, se estudia ese modo (con su `LICENSE` si se reutiliza código).
 
 ---
 
+## 7 bis. Re-medición con las caras reales (PR #26, 2026-11-16)
+
+Tras el PR #26, `fonts.mjs` elige la cara por estilo y peso (`brandFontFaces`) y la geometría mide cada texto con la cara
+con la que se dibuja (`faceMeasure`). El motor HTML declara una `@font-face` por cara real con su peso; sin negrita real,
+el navegador la sintetiza y la medida ya lo cuenta. Mismo comando de §5, mismo fixture (*medido*):
+
+| | 4 CPU | 2 CPU |
+|---|---|---|
+| HTML (a) | 95,1 s / 93,9 s | **130,4 s** |
+| ASS actual | 34,2 s | 64,1 s |
+
+- Huella de los 1.748 fotogramas idéntica en las tres corridas (`6200eb32723ee44d…`); MP4 idéntico entre corridas y
+  entre 4 y 2 CPU (`220f9216380fd1be…`, 13.747.496 bytes).
+- Ancho real de cada línea en el navegador: entre el 91,1 % y el 97,9 % del medido (nada sale de su caja).
+- La geometría de la pieza cambia con las caras reales: título «$1.67…» de 73 a 65 px; CTA de 69 a 65 px; el resto igual.
+- Las cifras de §5 se conservan: describen el motor con la cara anterior.
+
 ## 8. Recomendación para F1 (no se ejecuta sin el sí de Sam)
 
 1. `spec.engine: 'html' | 'ass'` en `videolab_text_presets.spec` (eje del sistema; por defecto `ass`). ASS queda como
    respaldo; `entry` se sigue leyendo.
 2. `buildTextLayers` devuelve la escena directamente (una sola derivación; hoy la F0 re-mide al tamaño de la
    geometría y comprueba que coincide).
-3. Corregir la elección de cara de `fonts.mjs` (hallazgo 1) **antes** de activar presets HTML.
+3. ~~Corregir la elección de cara de `fonts.mjs` (hallazgo 1)~~ — hecho en el PR #26; el motor ya usa sus caras (§7 bis).
 4. Imagen del job con Chromium headless shell; medir el tamaño real en Cloud Build y una ejecución de 60 s en el job
    (procedimiento `claude-ops`, tras merge).
 5. Posición por tramo de toma en la geometría para bloques que cruzan cortes.

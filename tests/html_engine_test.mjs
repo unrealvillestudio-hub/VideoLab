@@ -182,6 +182,22 @@ caso('test N+1: el código del motor no nombra ninguna marca (sin comentarios)',
   assert.ok(!marcas.test(JSON.stringify(F0)), 'docs/html_presets_f0.json nombra una marca');
 });
 
+// 2026-11-16 — el banco de la F0 se rompió en main al retirarse `brandFontFile` (PR #26): ninguna prueba importaba el
+// banco, así que CI no lo vio. Esta comprobación cubre la clase: cada nombre que un archivo de render/bench importa de
+// render/src tiene que existir en ese módulo. No ejecuta el banco (su cuerpo corre al importarse).
+caso('los bancos de render/bench importan sólo nombres que existen en render/src', async () => {
+  const dir = join(RAIZ, 'render/bench');
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.mjs'))) {
+    const src = readFileSync(join(dir, f), 'utf8');
+    for (const [, names, rel] of src.matchAll(/import\s*\{([^}]+)\}\s*from\s*'(\.\.\/src\/[^']+)'/g)) {
+      const mod = await import(new URL(rel, `file://${dir}/`).href);
+      for (const n of names.split(',').map((s) => s.trim().split(/\s+as\s+/)[0]).filter(Boolean)) {
+        assert.ok(n in mod, `${f} importa ${n} de ${rel}, que no lo exporta`);
+      }
+    }
+  }
+});
+
 // DETERMINISMO con navegador real: dos capturas de la misma escena, misma huella por fotograma.
 const FONT = ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].find(existsSync);
 let chromium = null;
