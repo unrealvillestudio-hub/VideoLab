@@ -19,11 +19,13 @@ function inline(file) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /**
- * El HTML de la escena. `fonts` = [{ family, bytes (Buffer), format: 'truetype' | 'opentype' }]. PURO sobre sus
- * argumentos (mismo pedido → mismo HTML, byte a byte).
+ * El HTML de la escena. `fonts` = [{ family, weight?: 400 | 700, bytes (Buffer), format: 'truetype' | 'opentype' }]:
+ * una entrada por cara REAL que baja fonts.mjs. Con la negrita real presente, el navegador la usa; sin ella, sintetiza
+ * la negrita sobre la regular (`font-synthesis`), y la medida ya lo cuenta (`faceMeasure`). PURO sobre sus argumentos
+ * (mismo pedido → mismo HTML, byte a byte).
  */
 export function scenePage(scene, fonts) {
-  const faces = fonts.map((f) => `@font-face{font-family:${JSON.stringify(f.family)};src:url(data:font/${f.format === 'opentype' ? 'otf' : 'ttf'};base64,${Buffer.from(f.bytes).toString('base64')}) format(${JSON.stringify(f.format)});font-weight:400;font-style:normal;font-display:block}`).join('\n');
+  const faces = fonts.map((f) => `@font-face{font-family:${JSON.stringify(f.family)};src:url(data:font/${f.format === 'opentype' ? 'otf' : 'ttf'};base64,${Buffer.from(f.bytes).toString('base64')}) format(${JSON.stringify(f.format)});font-weight:${f.weight ?? 400};font-style:normal;font-display:block}`).join('\n');
   const { width: W, height: H } = scene.canvas;
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${faces}

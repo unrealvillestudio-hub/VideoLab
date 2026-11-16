@@ -14,8 +14,8 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { buildScene } from '../src/html/scene.mjs';
 import { renderHtmlLayers } from '../src/html/capture.mjs';
-import { buildTextLayers, ttfMeasure, estimateMeasure, textLayersArgs } from '../src/textlayers.mjs';
-import { brandFontFile } from '../src/fonts.mjs';
+import { buildTextLayers, ttfMeasure, estimateMeasure, textLayersArgs, fontFacesNeeded, faceMeasure } from '../src/textlayers.mjs';
+import { brandFontFaces } from '../src/fonts.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, d = null) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : d; };
@@ -37,17 +37,30 @@ for (const pair of (opt('swap') ?? '').split(',').filter(Boolean)) {
   target.preset_key = key;
 }
 
-// Fuentes: las mismas que baja el job (fonts.mjs), con sus métricas reales.
+// Fuentes: las mismas caras que baja el job (fonts.mjs, PR #26): por familia, la regular y la negrita real si algún
+// preset la pide y la familia la ofrece. Cada texto se mide con la cara con la que se dibuja (faceMeasure).
 const fontsDir = join(outDir, 'fonts');
-const measures = {};
-const fonts = [];
-for (const t of fx.typography) {
-  const { file } = await brandFontFile({ cssImport: t.css_import, family: t.font_family, dir: fontsDir });
-  const bytes = readFileSync(file);
-  measures[t.font_family] = ttfMeasure(bytes);
-  fonts.push({ family: t.font_family, bytes, format: file.endsWith('.otf') ? 'opentype' : 'truetype' });
+const needs = new Map();
+for (const { role, bold } of fontFacesNeeded(tl, presets, fx.brandId)) {
+  const row = fx.typography.find((t) => t.role === role);
+  if (!row) throw new Error(`el fixture no tiene tipografía para el rol ${role}`);
+  needs.set(row.font_family, { row, bold: (needs.get(row.font_family)?.bold ?? false) || bold });
 }
-const measure = (text, px, o) => (measures[o?.family] ?? estimateMeasure)(text, px, o);
+const faces = {};
+const fonts = [];
+for (const [family, { row, bold }] of needs) {
+  const got = await brandFontFaces({ cssImport: row.css_import, family, dir: fontsDir, bold });
+  const fmt = (f) => (f.endsWith('.otf') ? 'opentype' : 'truetype');
+  const reg = readFileSync(got.regular.file);
+  fonts.push({ family, weight: 400, bytes: reg, format: fmt(got.regular.file) });
+  faces[family] = { regular: ttfMeasure(reg), bold: null };
+  if (got.bold) {
+    const b = readFileSync(got.bold.file);
+    fonts.push({ family, weight: 700, bytes: b, format: fmt(got.bold.file) });
+    faces[family].bold = ttfMeasure(b);
+  }
+}
+const measure = faceMeasure(faces, estimateMeasure);
 const base = { textLayers: tl, timeline: fx.timeline, presets, brandId: fx.brandId, palette: fx.palette, typography: fx.typography,
   tokens: fx.tokens, safeZone: fx.safeZone, canvas: fx.canvas, durationMs: fx.durationMs, measure };
 
