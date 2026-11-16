@@ -1,6 +1,7 @@
 // CURVAS DE VELOCIDAD del motor HTML de VideoLab (F0, 2026-11-16). Todas por fórmula pública:
 // - las «Penner» (Robert Penner, «Easing Equations», 2001; las mismas que publica easings.net): sine, quad, cubic,
 //   quart, quint, expo, circ, back y elastic, cada una con _in, _out e _in_out;
+// - el resorte físico (oscilador armónico amortiguado), escrito `spring:rigidez,amortiguación[,masa]` (F1);
 // - la curva de Bézier cúbica de CSS (W3C, CSS Easing Functions Level 1, §2.2 «cubic-bezier()»), escrita como
 //   `bezier:x1,y1,x2,y2`, resuelta por Newton-Raphson con respaldo de bisección (el método del propio borrador).
 // Son funciones PURAS de p ∈ [0, 1] → valor (puede salirse de [0, 1] en back y elastic, a propósito).
@@ -92,9 +93,46 @@ export function cubicBezier(x1, y1, x2, y2) {
   return (x) => (x <= 0 ? 0 : x >= 1 ? 1 : sy(solve(x)));
 }
 
-/** Resuelve el nombre de una curva del dato (`expo_out`, `bezier:0.2,0.8,0.2,1`). Nombre desconocido → error. PURO. */
+/**
+ * RESORTE (F1, vigilancia tecnológica ronda 1, R1.2): oscilador armónico amortiguado de rigidez k, amortiguación c y
+ * masa m, que parte de 0 en reposo hacia 1. Solución ANALÍTICA (fórmula cerrada, sin integrar paso a paso): mismo p,
+ * mismo valor, en Node y en el navegador. ω0 = √(k/m), ζ = c / (2√(k·m)):
+ *  - ζ < 1 (rebota): x(t) = 1 − e^(−ζω0t) · (cos ωd t + (ζω0/ωd) sen ωd t), con ωd = ω0√(1−ζ²);
+ *  - ζ = 1 (crítico): x(t) = 1 − e^(−ω0t) · (1 + ω0t);
+ *  - ζ > 1 (sobreamortiguado): x(t) = 1 − (r2·e^(r1t) − r1·e^(r2t)) / (r2 − r1), con r1,2 = −ω0(ζ ∓ √(ζ²−1)).
+ * El tramo de la clave (su duración en ms) es el tiempo hasta que el resorte se asienta (envolvente < 0,1 %): la forma
+ * la dan k, c y m; la velocidad, la duración del tramo. p = 1 devuelve exactamente 1.
+ */
+export function springEase(k, c, m = 1) {
+  if (![k, c, m].every((v) => Number.isFinite(v) && v > 0)) throw new Error(`spring inválido: ${k},${c},${m}`);
+  const w0 = Math.sqrt(k / m);
+  const z = c / (2 * Math.sqrt(k * m));
+  const LN = Math.log(1000);                                   // envolvente hasta 0,1 %
+  let x, settle;
+  if (z < 1) {
+    const wd = w0 * Math.sqrt(1 - z * z);
+    x = (t) => 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t));
+    settle = LN / (z * w0);
+  } else if (z === 1) {
+    x = (t) => 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+    settle = (LN + Math.log(1 + LN)) / w0;
+  } else {
+    const s = Math.sqrt(z * z - 1);
+    const r1 = -w0 * (z - s), r2 = -w0 * (z + s);
+    x = (t) => 1 - (r2 * Math.exp(r1 * t) - r1 * Math.exp(r2 * t)) / (r2 - r1);
+    settle = LN / -r1;                                          // el polo lento manda
+  }
+  return (p) => (p <= 0 ? 0 : p >= 1 ? 1 : x(p * settle));
+}
+
+/** Resuelve el nombre de una curva del dato (`expo_out`, `bezier:0.2,0.8,0.2,1`, `spring:300,10,1`). Nombre desconocido → error. PURO. */
 export function easeFn(name) {
   if (name == null) return EASES.linear;
+  if (typeof name === 'string' && name.startsWith('spring:')) {
+    const p = name.slice(7).split(',').map(Number);
+    if (p.length < 2 || p.length > 3) throw new Error(`spring inválido: ${name} (spring:rigidez,amortiguación[,masa])`);
+    return springEase(p[0], p[1], p[2] ?? 1);
+  }
   if (typeof name === 'string' && name.startsWith('bezier:')) {
     const p = name.slice(7).split(',').map(Number);
     if (p.length !== 4) throw new Error(`bezier inválida: ${name}`);

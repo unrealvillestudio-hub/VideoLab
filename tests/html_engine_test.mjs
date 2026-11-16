@@ -70,6 +70,32 @@ caso('curvas: todas valen 0 en 0 y 1 en 1; la Bézier de CSS «ease» (0.25,0.1,
   assert.throws(() => easeFn('rebote_magico'), /curva desconocida/);
 });
 
+caso('resorte (F1): 0 en 0 y 1 en 1; con poca amortiguación pasa de 1 (rebota); crítico o sobreamortiguado, nunca', () => {
+  const max = (f) => { let m = 0; for (let i = 0; i <= 2000; i++) m = Math.max(m, f(i / 2000)); return m; };
+  for (const s of ['spring:300,10,1', 'spring:300,40,1', 'spring:100,20', 'spring:170,26,1']) {
+    const f = easeFn(s);
+    assert.equal(f(0), 0, s); assert.equal(f(1), 1, s);
+    assert.ok(Math.abs(f(0.999) - 1) < 0.01, `${s} no se asentó al final del tramo: ${f(0.999)}`);
+  }
+  assert.ok(max(easeFn('spring:300,10,1')) > 1.2, 'con amortiguación 10 debe rebotar');
+  assert.ok(max(easeFn('spring:300,40,1')) <= 1 + 1e-9, 'con amortiguación 40 no debe rebotar');
+  assert.ok(max(easeFn('spring:100,20,1')) <= 1 + 1e-9, 'crítico: no rebota');
+  assert.equal(easeFn('spring:300,10,1')(0.37), easeFn('spring:300,10,1')(0.37));
+  assert.throws(() => easeFn('spring:300'), /spring inválido/);
+  assert.throws(() => easeFn('spring:0,10,1'), /spring inválido/);
+  validateMotion({ tracks: [{ target: 'block', keys: [{ t: 0, y_em: 1 }, { t: 600, y_em: 0, ease: 'spring:300,12,1' }] }] });
+});
+
+caso('el núcleo que importa la vista previa (ease, keyframes, runtime) no depende de Node ni de nada fuera de sí', () => {
+  const permitido = { 'ease.mjs': [], 'keyframes.mjs': ['./ease.mjs'], 'runtime.mjs': ['./keyframes.mjs'] };
+  for (const [f, deps] of Object.entries(permitido)) {
+    const src = readFileSync(join(RAIZ, 'render/src/html', f), 'utf8');
+    const imports = [...src.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+    assert.deepEqual(imports, deps, `${f} importa ${imports.join(', ')}`);
+    assert.ok(!/\b(process|Buffer|require)\b[.(]/.test(src.replace(/\/\/.*$/gm, '')), `${f} usa algo de Node`);
+  }
+});
+
 caso('propAt: antes de la primera clave, la primera; entre claves, la curva de la clave de llegada; después, la última', () => {
   const keys = [{ t: 100, opacity: 0 }, { t: 300, opacity: 1, ease: 'linear' }, { t: 500, y_em: 2 }];
   assert.equal(propAt(keys, 'opacity', 0), 0);
