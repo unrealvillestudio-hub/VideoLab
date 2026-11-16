@@ -295,7 +295,7 @@
         "split_on": " — ",
         "size_pct": 2.3,
         "min_size_pct": 1.7,
-        "max_lines": 3,
+        "max_lines": 4,
         "max_width_pct": 80,
         "bold": true,
         "line_height": 1.25,

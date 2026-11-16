@@ -343,10 +343,13 @@ caso('siembra: cada preset de gancho, título clave, CTA y rol aguanta el texto 
     const raw = typeof p.spec === 'string' ? JSON.parse(p.spec) : p.spec;
     // El rol se mide como lo mide buildTextLayers: con `split_on` admite 4 líneas y si no, 2 por defecto.
     const spec = p.layer === 'role' ? { max_lines: raw.split_on ? 4 : 2, ...raw } : raw;
-    for (const text of PEOR_CASO[p.layer]) {
+    for (const original of PEOR_CASO[p.layer]) {
+      // Con `split_on`, cada parte va en su línea, y una parte larga parte a su vez (render/src/textlayers.mjs, capa 4).
+      const text = p.layer === 'role' && raw.split_on
+        ? original.split(raw.split_on).map((x) => x.trim()).filter(Boolean).join('\n') : original;
       assert.doesNotThrow(() => T.measureBlock({ text, spec, layer: p.layer, canvas: CANVAS,
         maxW: safe.w * (spec.max_width_pct ?? (p.layer === 'role' ? 80 : 100)) / 100, measure: T.estimateMeasure, family: 'x' }),
-      `${p.preset_key} no aguanta «${text}»`);
+      `${p.preset_key} no aguanta «${original}»`);
     }
   }
 });
