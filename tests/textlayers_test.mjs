@@ -216,6 +216,57 @@ caso('título clave y CTA esquivan la cara declarada de su tramo; fuera del tram
   assert.equal(lejos.blocks.find((b) => b.layer === 'key_title').rect.y, k0.y);
 });
 
+// 2026-11-16 — BLOQUES COLOCADOS A MANO (contrato v1.3.3).
+caso('place: validación de rango y forma; subtítulos sólo admiten zoom', () => {
+  const tl = () => TL();
+  const t1 = tl(); t1.hook.place = { x_pct: 50, y_pct: 50, zoom: 1.5 };
+  assert.throws(() => build({ textLayers: t1 }), /zoom debe estar entre 0.7 y 1.3/);
+  const t2 = tl(); t2.cta.place = { x_pct: 120, y_pct: 50, zoom: 1 };
+  assert.throws(() => build({ textLayers: t2 }), /x_pct debe estar entre 0 y 100/);
+  const t3 = tl(); t3.captions.place = { x_pct: 10, y_pct: 10, zoom: 1 };
+  assert.throws(() => build({ textLayers: t3 }), /sólo admite zoom/);
+  const t4 = tl(); t4.key_titles[0].place = 'arriba';
+  assert.throws(() => build({ textLayers: t4 }), /place debe ser un objeto/);
+});
+
+caso('place: el centro cae donde dice, el zoom cambia el tamaño y el bloque queda marcado manual', () => {
+  const base = build();
+  const k0 = base.blocks.find((b) => b.layer === 'key_title');
+  const tl = TL(); tl.key_titles[0].place = { x_pct: 50, y_pct: 20, zoom: 1.2 };
+  const p = build({ textLayers: tl });
+  const k = p.blocks.find((b) => b.layer === 'key_title');
+  assert.equal(k.placed, 'manual'); assert.equal(k0.placed, 'auto');
+  assert.ok(k.size_px > k0.size_px, 'el zoom agrandó el texto');
+  const safe = p.safe;
+  const cy = k.rect.y + k.rect.h / 2, cx = k.rect.x + k.rect.w / 2;
+  assert.ok(Math.abs(cy - (safe.y + safe.h * 0.2)) <= 1 || p.warnings.some((w) => w.startsWith('TEXT_PLACE_CLAMPED: key_titles[0]')));
+  assert.ok(Math.abs(cx - (safe.x + safe.w * 0.5)) <= 1);
+});
+
+caso('place en una esquina ⇒ se acota a la zona segura y avisa; sobre una cara ⇒ se queda y avisa', () => {
+  const tl = TL(); tl.cta.place = { x_pct: 100, y_pct: 0, zoom: 1 };
+  const p = build({ textLayers: tl });
+  const c = p.blocks.find((b) => b.layer === 'cta');
+  assert.ok(p.warnings.some((w) => w.startsWith('TEXT_PLACE_CLAMPED: cta')));
+  assert.ok(c.rect.x + c.rect.w <= p.safe.x1 + 0.5 && c.rect.y >= p.safe.y - 0.5);
+  const tf = TL(); tf.key_titles[0].place = { x_pct: 50, y_pct: 50, zoom: 1 };
+  const kt = tf.key_titles[0];
+  const q = build({ textLayers: tf, timeline: { words: WORDS, faces: [{ box: { x: 0, y: 0, w: 100, h: 100 }, start_ms: kt.at_ms, end_ms: kt.at_ms + kt.dur_ms }] } });
+  assert.ok(q.warnings.some((w) => w.startsWith('TEXT_PLACED_OVER_FACE: key_titles[0]')));
+  assert.equal(q.blocks.find((b) => b.layer === 'key_title').placed, 'manual');
+});
+
+caso('rol y subtítulos: el rol colocado a mano se respeta; el zoom de subtítulos agranda la banda', () => {
+  const tl = TL(); tl.roles[0].place = { x_pct: 80, y_pct: 30, zoom: 0.8 };
+  const p = build({ textLayers: tl });
+  assert.equal(p.blocks.find((b) => b.layer === 'role').placed, 'manual');
+  const base = build();
+  const tz = TL(); tz.captions.place = { zoom: 1.3 };
+  const z = build({ textLayers: tz });
+  const bh = (x) => x.blocks.find((b) => b.layer === 'caption_band').rect.h;
+  assert.ok(bh(z) > bh(base), 'banda más alta con zoom');
+});
+
 caso('franja de identidad: drawbox con el modo y el ancho de los tokens y el color del rol', () => {
   assert.deepEqual(build().filters, ['drawbox=x=0:y=0:w=19:h=1920:color=0x00AACC@1:t=fill']);
   assert.throws(() => build({ tokens: { ...TOKENS, identity: undefined } }), /no declara identity/);
