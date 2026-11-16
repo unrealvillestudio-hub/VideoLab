@@ -103,8 +103,26 @@ caso('con una cara en el tercio inferior, el rol sube hasta no taparla', () => {
   assert.ok(role.y < base.y);
 });
 
-caso('una cara que ocupa toda la zona segura ⇒ VIDEOLAB_TEXT_DOES_NOT_FIT (no se tapa la cara en silencio)', () => {
-  assert.throws(() => build({ timeline: { words: WORDS, faces: [{ box: { x: 0, y: 0, w: 100, h: 100 } }] } }), label('VIDEOLAB_TEXT_DOES_NOT_FIT'));
+// 2026-11-16 (2) — política única: sin lugar libre, el texto queda en su ancla y se AVISA (nunca se descarta ni tumba el
+// render). Antes el rol caía con VIDEOLAB_TEXT_DOES_NOT_FIT y el video entero se perdía (lab_jobs c5a1211c).
+caso('una cara que ocupa toda la zona segura ⇒ cada capa queda en su ancla y avisa TEXT_OVER_FACE (no se tapa en silencio)', () => {
+  const p = build({ timeline: { words: WORDS, faces: [{ box: { x: 0, y: 0, w: 100, h: 100 } }] } });
+  for (const l of ['hook', 'key_titles[0]', 'cta', 'roles[0]']) assert.ok(p.warnings.some((w) => w.startsWith(`TEXT_OVER_FACE: ${l} `)), `avisa ${l}`);
+  assert.equal(p.blocks.filter((b) => ['hook', 'key_title', 'cta', 'role'].includes(b.layer)).length, 4, 'ningún texto se descarta');
+});
+
+caso('antes de ceder, más pequeño: el gancho baja de tamaño para caber sobre la cara', () => {
+  const base = build();
+  const h0 = base.blocks.find((b) => b.layer === 'hook');
+  const safe = base.safe;
+  // Cara desde 3/4 del alto del gancho hasta el fondo: a su tamaño no cabe ni arriba ni abajo.
+  const top = h0.rect.y + h0.rect.h * 0.75;
+  const face = { box: { x: 0, y: (top / 1920) * 100, w: 100, h: ((1920 - top) / 1920) * 100 }, start_ms: 0, end_ms: 2600 };
+  const p = build({ timeline: { words: WORDS, faces: [face] } });
+  const h1 = p.blocks.find((b) => b.layer === 'hook');
+  assert.ok(h1.size_px < h0.size_px, 'el gancho se achicó');
+  assert.ok(h1.rect.y + h1.rect.h <= top + 0.5 && h1.rect.y >= safe.y - 0.5, 'cabe entre la zona segura y la cara');
+  assert.ok(!p.warnings.some((w) => w.startsWith('TEXT_OVER_FACE: hook ')), 'el gancho no avisa: encontró lugar');
 });
 
 caso('preset inexistente, inactivo o de otra capa ⇒ VIDEOLAB_BAD_REQUEST', () => {
