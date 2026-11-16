@@ -268,6 +268,33 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
   } finally { globalThis.fetch = fetchOriginal; }
 } else console.log('  --  job con el motor HTML: se salta (sin libass, sin chrome-headless-shell o sin DejaVu)');
 
+// VISTA PREVIA (§4 ter.5): el módulo servido es el mismo archivo del motor, sólo esa lista cerrada y sólo la versión vigente.
+{
+  const { engineFile } = await import('../api/engine.js');
+  const { validateSceneRequest } = await import('../api/text-scene.js');
+  const { RUNTIME_VERSION } = await import('../render/src/html/runtime.mjs');
+  caso('GET /engine/<versión>/<módulo>: sirve el archivo tal cual; otra versión u otro archivo → 404', () => {
+    const ok = engineFile(RUNTIME_VERSION, 'runtime.mjs');
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body, readFileSync(new URL('../render/src/html/runtime.mjs', import.meta.url), 'utf8'));
+    assert.equal(engineFile(RUNTIME_VERSION, 'keyframes.mjs').status, 200);
+    assert.equal(engineFile('0.0.0', 'runtime.mjs').status, 404);
+    for (const f of ['page.mjs', 'capture.mjs', '../textlayers.mjs', 'constructor', '__proto__']) assert.equal(engineFile(RUNTIME_VERSION, f).status, 404, f);
+  });
+  caso('POST /api/text-scene valida la forma del pedido antes de leer nada', () => {
+    const tl = { hook: { text: 'Una frase', preset_key: 'hook_char_rise', start_ms: 0, end_ms: 1000 } };
+    const base = { brandId: 'marca-prueba', params: { platform: 'instagram', format: 'reel' }, previousOutputs: { text_layers: tl, timeline: null }, duration_ms: 3000 };
+    const r = validateSceneRequest(base);
+    assert.equal(r.durationMs, 3000);
+    assert.equal(r.brandId, 'marca-prueba');
+    const malo = (b, m) => assert.throws(() => validateSceneRequest(b), (e) => e.label === 'VIDEOLAB_BAD_REQUEST' || /text_layers/.test(e.message), m);
+    malo(null, 'cuerpo nulo');
+    malo({ ...base, brandId: '' }, 'sin marca');
+    malo({ ...base, params: { platform: 'instagram', format: 'story' } }, 'formato no reel');
+    malo({ ...base, duration_ms: 0 }, 'duración 0');
+  });
+}
+
 await Promise.all(pendientes);
 if (fallos) { console.error(`\n${fallos} caso(s) MAL`); process.exit(1); }
 console.log('\ntext_v14: todo en verde');

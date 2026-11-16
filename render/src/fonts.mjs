@@ -77,9 +77,10 @@ export async function brandFontFaces({ cssImport, family, dir, bold = false, ita
   const pick = pickFaces(faces, { family, bold, italic });
   mkdirSync(dir, { recursive: true });
   const rw = covers(pick.regular, REGULAR_WEIGHT) ? REGULAR_WEIGHT : pick.regular.weight[0];
-  const regular = { file: await download(pick.regular, family, rw, dir), weight: rw };
-  const strong = pick.bold ? { file: await download(pick.bold, family, BOLD_WEIGHT, dir), weight: BOLD_WEIGHT } : null;
-  const slanted = pick.italic ? { file: await download(pick.italic, family, `${REGULAR_WEIGHT}i`, dir), weight: REGULAR_WEIGHT, style: 'italic' } : null;
+  // `url`: la del proveedor, para que la vista previa del Orchestrator cargue LA MISMA cara que mide el render.
+  const regular = { file: await download(pick.regular, family, rw, dir), weight: rw, url: pick.regular.url };
+  const strong = pick.bold ? { file: await download(pick.bold, family, BOLD_WEIGHT, dir), weight: BOLD_WEIGHT, url: pick.bold.url } : null;
+  const slanted = pick.italic ? { file: await download(pick.italic, family, `${REGULAR_WEIGHT}i`, dir), weight: REGULAR_WEIGHT, style: 'italic', url: pick.italic.url } : null;
   return { dir, regular, bold: strong, italic: slanted };
 }
 

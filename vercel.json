@@ -17,5 +17,19 @@
         }
       ]
     }
-  ]
+  ],
+  "rewrites": [
+    {
+      "source": "/engine/:version/:file",
+      "destination": "/api/engine?version=:version&file=:file"
+    }
+  ],
+  "functions": {
+    "api/engine.js": {
+      "includeFiles": "render/src/html/*.mjs"
+    },
+    "api/text-scene.js": {
+      "includeFiles": "render/src/**/*.mjs"
+    }
+  }
 }

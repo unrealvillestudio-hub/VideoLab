@@ -39,12 +39,15 @@ export function findHeadlessShell(env = process.env) {
  * { mode, frame(withShot) → Buffer|null, evaluate(expr, awaitPromise), close() }. Lanza si el navegador no arranca o si
  * el modo pedido no funciona; el llamador decide el respaldo.
  */
-export async function openPage({ browserPath, url, width, height, mode = 'beginframe', fps = 30, timeoutMs = 30000 }) {
+export async function openPage({ browserPath, url, width, height, mode = 'beginframe', fps = 30, timeoutMs = 30000, blockNetwork = true }) {
   if (!CAPTURE_MODES.includes(mode)) throw new Error(`modo de captura desconocido: ${mode}`);
   const userDir = mkdtempSync(join(tmpdir(), 'vl-cdp-'));
+  // --disable-partial-raster: sin él, el compositor reutiliza tiles ya rasterizados y sólo repinta lo invalidado; el
+  // fotograma dependía del anterior (medido F1: fotograma 175 en orden ≠ saltando a él, 1.233 px, hasta 4/255, todo
+  // dentro de una fila de tiles de 256 px). Con él, cada fotograma se rasteriza entero: mismo t → mismos píxeles.
   const flags = ['--remote-debugging-port=0', `--user-data-dir=${userDir}`, '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
     '--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb', '--hide-scrollbars', '--no-first-run',
-    '--mute-audio', `--window-size=${width},${height}`];
+    '--mute-audio', '--disable-partial-raster', `--window-size=${width},${height}`];
   if (mode === 'beginframe') {
     flags.push('--deterministic-mode', '--enable-begin-frame-control', '--run-all-compositor-stages-before-draw',
       '--disable-threaded-animation', '--disable-threaded-scrolling', '--disable-checker-imaging', '--disable-new-content-rendering-timeout');
@@ -79,8 +82,11 @@ export async function openPage({ browserPath, url, width, height, mode = 'beginf
     await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, s);
     await send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } }, s);
     // Sin red: la página trae todo dentro. Cualquier petición que no sea file:// o data: se corta.
-    await send('Network.enable', {}, s);
-    await send('Network.setBlockedURLs', { urls: ['http://*', 'https://*', 'ws://*', 'wss://*'] }, s);
+    // `blockNetwork: false` sólo lo usa la prueba de la vista previa (sirve el runtime por HTTP local).
+    if (blockNetwork) {
+      await send('Network.enable', {}, s);
+      await send('Network.setBlockedURLs', { urls: ['http://*', 'https://*', 'ws://*', 'wss://*'] }, s);
+    }
     const evaluate = async (expression, awaitPromise = false) => {
       const r = await send('Runtime.evaluate', { expression, awaitPromise, returnByValue: true }, s);
       if (r.exceptionDetails) throw new Error(`página: ${r.exceptionDetails.exception?.description ?? r.exceptionDetails.text}`);

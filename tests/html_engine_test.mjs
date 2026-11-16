@@ -255,6 +255,60 @@ if (SHELL && FONT) {
     assert.equal(b.mode, 'screenshot');
     assert.deepEqual(a.hs, b.hs);
   });
+  // SIN MEMORIA (F1, 2026-11-16): llegar a un fotograma saltando da el mismo píxel que llegar en orden. Sin
+  // --disable-partial-raster el compositor reutilizaba tiles del fotograma anterior y el 175 salía distinto (medido).
+  // La vista previa salta cada vez que el operador mueve el cabezal: sin esta propiedad no sería fiel.
+  caso('sin memoria: saltar a un fotograma da el mismo píxel que llegar a él en orden', async () => {
+    const { scenePage } = await import('../render/src/html/page.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const { mkdtempSync, writeFileSync: wf, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'vl-salto-'));
+    wf(join(dir, 'p.html'), scenePage(sc, fonts));
+    const page = await openPage({ browserPath: SHELL, url: `file://${dir}/p.html`, width: 1080, height: 1920, mode: 'screenshot' });
+    const hs = [];
+    try {
+      await page.evaluate('window.__vl.ready');
+      for (const i of [...pick].reverse()) { await page.evaluate(`window.__vl.seek(${(i * 1000) / 30})`); hs.unshift(require_hash(await page.frame(true))); }
+    } finally { await page.close(); rmSync(dir, { recursive: true, force: true }); }
+    const seq = await run('screenshot');
+    assert.deepEqual(hs, seq.hs);
+  });
+  // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
+  // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
+  caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {
+    const { createServer } = await import('node:http');
+    const { default: engine } = await import('../api/engine.js');
+    const { RUNTIME_VERSION } = await import('../render/src/html/runtime.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const faces = fonts.map((f) => `@font-face{font-family:${JSON.stringify(f.family)};src:url(data:font/ttf;base64,${f.bytes.toString('base64')}) format("truetype");font-weight:400;font-style:normal;font-display:block}`).join('\n');
+    const preview = `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
+html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:1080px;height:1920px}#root{position:absolute;left:0;top:0}
+*{animation:none!important;transition:none!important;caret-color:transparent}</style></head><body><div id="root"></div>
+<script type="module">
+import { mount } from '/engine/${RUNTIME_VERSION}/runtime.mjs';
+const SCENE = ${JSON.stringify(sc).replace(/</g, '\\u003c')};
+const VL = mount(document.getElementById('root'), SCENE, document);
+window.__vl = { seek: VL.seek, check: VL.check, ready: document.fonts.ready.then(() => { VL.prepare(); return SCENE.families.map((f) => document.fonts.check('40px ' + JSON.stringify(f))); }) };
+</script></body></html>`;
+    const srv = createServer((req, res) => {
+      const m = req.url.match(/^\/engine\/([^/]+)\/([^/?]+)$/);
+      if (m) {
+        // El mismo manejador que publica Vercel, con un `res` mínimo.
+        const out = { code: 200, headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.code = c; return this; }, send(b) { res.writeHead(this.code, this.headers); res.end(b); } };
+        return engine({ query: { version: m[1], file: m[2] } }, out);
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(preview);
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const page = await openPage({ browserPath: SHELL, url: `http://127.0.0.1:${srv.address().port}/`, width: 1080, height: 1920, mode: 'screenshot', blockNetwork: false });
+    const hs = [];
+    try {
+      for (const i of pick) { await page.evaluate(`window.__vl.seek(${(i * 1000) / 30})`); hs.push(require_hash(await page.frame(true))); }
+    } finally { await page.close(); srv.close(); }
+    const job = await run('screenshot');
+    assert.deepEqual(hs, job.hs);
+  });
 } else console.log('  --  determinismo con navegador: se salta (sin chrome-headless-shell o sin fuente local)');
 
 import { createHash } from 'node:crypto';
