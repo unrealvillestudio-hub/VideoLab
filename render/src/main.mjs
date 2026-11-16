@@ -16,8 +16,8 @@ import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirecti
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
 import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs, facesOnCanvas } from './conversation.mjs';
-import { brandFont, brandFontFile } from './fonts.mjs';
-import { validateTextLayers, timelineWords, presetKeysOf, fontRolesNeeded, buildTextLayers, textLayersArgs, ttfMeasure,
+import { brandFont, brandFontFaces } from './fonts.mjs';
+import { validateTextLayers, timelineWords, presetKeysOf, fontFacesNeeded, faceMeasure, buildTextLayers, textLayersArgs, ttfMeasure,
   estimateMeasure, conversationTimeline } from './textlayers.mjs';
 
 const run = promisify(execFile);
@@ -101,18 +101,28 @@ async function prepareTextLayers({ cfg, brandId, params, profile, canvas, textLa
     `&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=*`) : [];
   const palette = await S.select(cfg, `brand_palette?brand_id=eq.${enc(brandId)}&select=role,hex`);
   const typography = await S.select(cfg, `brand_typography?brand_id=eq.${enc(brandId)}&select=role,font_family,css_import`);
-  // Las fuentes de los roles que piden los presets, con sus métricas reales; si una no se puede leer, la medida
+  // Las caras de los roles que piden los presets (la regular y, si un preset pide negrita, la negrita real), elegidas
+  // por estilo y peso, y cada texto medido con la cara con la que se dibuja. Si una no se puede leer, la medida
   // conservadora (sobrestima: nunca deja texto fuera de la zona segura).
   const fontsDir = join(work, 'fonts');
-  const measures = {};
-  let metrics = 'font';
-  for (const role of fontRolesNeeded(textLayers, presets, brandId)) {
+  const needs = new Map();
+  for (const { role, bold } of fontFacesNeeded(textLayers, presets, brandId)) {
     const row = typography.find((t) => t.role === role);
     if (!row?.font_family || !row?.css_import) throw new RenderError('VIDEOLAB_BAD_REQUEST', `brand_typography no tiene el rol ${role} (familia y css_import) para la marca ${brandId}`);
-    const { file } = await brandFontFile({ cssImport: row.css_import, family: row.font_family, dir: fontsDir });
-    try { measures[row.font_family] = ttfMeasure(readFileSync(file)); } catch { metrics = 'estimate'; }
+    const prev = needs.get(row.font_family);
+    needs.set(row.font_family, { row, bold: (prev?.bold ?? false) || bold });
   }
-  const measure = (text, px, o) => (measures[o?.family] ?? estimateMeasure)(text, px, o);
+  const faces = {};
+  let metrics = 'font';
+  const read = (file) => { try { return ttfMeasure(readFileSync(file)); } catch { metrics = 'estimate'; return null; } };
+  for (const [family, { row, bold }] of needs) {
+    const got = await brandFontFaces({ cssImport: row.css_import, family, dir: fontsDir, bold });
+    const regular = read(got.regular.file);
+    // Negrita real presente pero ilegible: libass la dibuja igual, así que se mide con la estimación conservadora.
+    const strong = regular && got.bold ? read(got.bold.file) ?? ((t, px) => estimateMeasure(t, px, { bold: true })) : null;
+    faces[family] = { regular, bold: strong };
+  }
+  const measure = faceMeasure(faces, estimateMeasure);
   const plan = buildTextLayers({ textLayers, timeline, presets, brandId, palette, typography, tokens: marca?.tokens ?? null,
     safeZone, canvas, durationMs, measure });
   const ass = join(work, 'text_layers.ass');

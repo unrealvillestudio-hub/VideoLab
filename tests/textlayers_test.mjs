@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import * as T from '../render/src/textlayers.mjs';
+import * as F from '../render/src/fonts.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const SEED = JSON.parse(readFileSync(join(RAIZ, 'docs/text_presets_seed.json'), 'utf8'));
@@ -300,6 +301,80 @@ caso('timeline de conversación: palabras en tiempo absoluto con la persona del 
   assert.deepEqual(tl.turns_without_words, [1]);
 });
 
+// ── Caras de la fuente: se eligen por estilo y peso, nunca «la primera url» del CSS ────────────────────────────────────
+// El proveedor lista las caras en su orden (cursivas primero, el peso ligero primero). CSS sintético: sin red y sin marca.
+const face = (style, weight, id) => `@font-face {\n  font-family: 'Familia Sintetica';\n  font-style: ${style};\n  font-weight: ${weight};\n  src: url(https://fuentes.invalid/${id}.ttf) format('truetype');\n}\n`;
+const CSS_DISPLAY = face('italic', 400, 'i400') + face('italic', 500, 'i500') + face('normal', 400, 'n400') + face('normal', 500, 'n500');
+const CSS_TEXTO = face('normal', 300, 'n300') + face('normal', 400, 'n400') + face('normal', 500, 'n500') + face('normal', 600, 'n600') + face('normal', 700, 'n700');
+const id = (f) => f && f.url.match(/\/(\w+)\.ttf$/)[1];
+
+caso('caras: la regular es la normal más cercana a 400, aunque el CSS liste antes una cursiva o una ligera', () => {
+  assert.equal(F.parseFontFaces(CSS_DISPLAY).length, 4);
+  assert.equal(id(F.pickFaces(F.parseFontFaces(CSS_DISPLAY), { family: 'x' }).regular), 'n400');
+  assert.equal(id(F.pickFaces(F.parseFontFaces(CSS_TEXTO), { family: 'x' }).regular), 'n400');
+  // Sin 400: la más cercana; en empate, la más pesada.
+  assert.equal(id(F.pickFaces(F.parseFontFaces(face('normal', 300, 'n300') + face('normal', 500, 'n500')), { family: 'x' }).regular), 'n500');
+  assert.equal(id(F.pickFaces(F.parseFontFaces(face('italic', 400, 'i400') + face('normal', 600, 'n600')), { family: 'x' }).regular), 'n600');
+});
+
+caso('caras: la negrita es la normal 700 si el preset la pide y existe; si no existe, null (negrita sintética)', () => {
+  const t = F.pickFaces(F.parseFontFaces(CSS_TEXTO), { family: 'x', bold: true });
+  assert.deepEqual([id(t.regular), id(t.bold)], ['n400', 'n700']);
+  assert.equal(F.pickFaces(F.parseFontFaces(CSS_TEXTO), { family: 'x', bold: false }).bold, null);
+  assert.equal(F.pickFaces(F.parseFontFaces(CSS_DISPLAY), { family: 'x', bold: true }).bold, null);
+  // Una cursiva 700 no sirve de negrita.
+  assert.equal(F.pickFaces(F.parseFontFaces(CSS_DISPLAY + face('italic', 700, 'i700')), { family: 'x', bold: true }).bold, null);
+  // Una fuente variable (rango de pesos) en un solo archivo: regular, sin segunda cara.
+  const v = F.pickFaces(F.parseFontFaces(face('normal', '100 900', 'var')), { family: 'x', bold: true });
+  assert.deepEqual([id(v.regular), v.bold], ['var', null]);
+});
+
+caso('caras: sin ninguna cara normal ⇒ VIDEOLAB_BAD_REQUEST «sin cara normal» (nunca se dibuja en cursiva)', () => {
+  const soloCursiva = face('italic', 400, 'i400') + face('italic', 700, 'i700');
+  assert.throws(() => F.pickFaces(F.parseFontFaces(soloCursiva), { family: 'Familia Sintetica' }),
+    (e) => e.label === 'VIDEOLAB_BAD_REQUEST' && /sin cara normal/.test(e.message) && /Familia Sintetica/.test(e.message));
+});
+
+caso('medida por cara: la negrita con cara real se mide con ella sin engrosar; sin cara real, la regular engrosada', () => {
+  const calls = [];
+  const fake = (name) => (t, px, o = {}) => { calls.push([name, !!o.bold]); return 1; };
+  const m = T.faceMeasure({ A: { regular: fake('regA'), bold: fake('boldA') }, B: { regular: fake('regB'), bold: null } }, fake('est'));
+  m('x', 10, { family: 'A', bold: true }); m('x', 10, { family: 'A', bold: false });
+  m('x', 10, { family: 'B', bold: true }); m('x', 10, { family: 'Z', bold: true });
+  assert.deepEqual(calls, [['boldA', false], ['regA', false], ['regB', true], ['est', true]]);
+});
+
+caso('caras que pide el pedido: un rol pide negrita si algún preset de ese rol la pide', () => {
+  const rows = [
+    { preset_key: 'p_hook', brand_id: null, layer: 'hook', active: true, spec: { font_role: 'r_display', bold: true } },
+    { preset_key: 'p_cap', brand_id: null, layer: 'caption', active: true, spec: { font_role: 'r_texto', bold: false } },
+    { preset_key: 'p_cta', brand_id: null, layer: 'cta', active: true, spec: { font_role: 'r_texto' } }];
+  const tl = { hook: { preset_key: 'p_hook', text: 'a' }, captions: { preset_key: 'p_cap' }, cta: { preset_key: 'p_cta', text: 'b' } };
+  assert.deepEqual(T.fontFacesNeeded(tl, rows, BRAND), [{ role: 'r_display', bold: true }, { role: 'r_texto', bold: false }]);
+  assert.deepEqual(T.fontRolesNeeded(tl, rows, BRAND), ['r_display', 'r_texto']);
+});
+
+{
+  // La descarga baja la cara elegida (no la primera url) y la negrita real al mismo directorio, para libass.
+  const real = globalThis.fetch;
+  const pedidas = [];
+  globalThis.fetch = async (url) => {
+    pedidas.push(String(url));
+    if (String(url).startsWith('https://css.invalid/')) return new Response(CSS_DISPLAY + CSS_TEXTO.replace(/n(\d00)/g, 't$1'));
+    return new Response(Buffer.from(String(url).match(/\/(\w+)\.ttf$/)[1]));
+  };
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'caras-'));
+    const got = await F.brandFontFaces({ cssImport: 'https://css.invalid/a', family: 'Familia Sintetica', dir, bold: true });
+    caso('descarga: baja la regular normal 400 y la negrita normal 700, y nada más', () => {
+      assert.equal(readFileSync(got.regular.file, 'utf8'), 'n400');
+      assert.equal(readFileSync(got.bold.file, 'utf8'), 't700');
+      assert.deepEqual(pedidas.slice(1).sort(), ['https://fuentes.invalid/n400.ttf', 'https://fuentes.invalid/t700.ttf']);
+      assert.ok(got.regular.file.startsWith(dir) && got.bold.file.startsWith(dir));
+    });
+  } finally { globalThis.fetch = real; }
+}
+
 caso('medida real: las métricas de la fuente dan un ancho menor o igual que la estimación conservadora', () => {
   const f = '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf';
   if (!existsSync(f)) { console.log('      (sin DejaVu; se salta)'); return; }
@@ -388,8 +463,11 @@ if (hayLibass && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
     if (u.includes('videolab_text_presets')) return resp(PRESETS);
     if (u.includes('brand_palette')) return resp(PALETTE);
     if (u.includes('brand_typography')) return resp([{ role: 'display', font_family: 'DejaVu Sans', css_import: 'https://fonts.test/css' }, { role: 'body', font_family: 'DejaVu Sans', css_import: 'https://fonts.test/css' }]);
-    if (u === 'https://fonts.test/css') return resp('@font-face { src: url(https://fonts.test/f.ttf) format("truetype"); }');
+    // Como el proveedor real: la cursiva y la ligera primero. El job tiene que bajar la normal 400 y la negrita 700.
+    if (u === 'https://fonts.test/css') return resp(['italic 400 f-i', 'normal 300 f-l', 'normal 400 f', 'normal 700 f-b']
+      .map((x) => x.split(' ')).map(([st, w, f]) => `@font-face { font-style: ${st}; font-weight: ${w}; src: url(https://fonts.test/${f}.ttf) format("truetype"); }`).join('\n'));
     if (u === 'https://fonts.test/f.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans.ttf')));
+    if (u === 'https://fonts.test/f-b.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans-Bold.ttf')));
     if (u.includes('/storage/v1/object/')) { writeFileSync(join(dir, u.split('/').pop()), Buffer.from(init.body)); return resp({ Key: 'ok' }); }
     throw new Error(`fetch inesperado ${m} ${u}`);
   };
@@ -406,6 +484,10 @@ if (hayLibass && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
       assert.ok(existsSync(join(dir, `${JOB}.mp4`)) && existsSync(join(dir, `${JOB}.jpg`)));
       assert.ok(llamadas.some((l) => l.includes('ops_log_generation')));
       assert.ok(llamadas.some((l) => typeof l === 'string' && l.includes('"status":"completed"')));
+    });
+    caso('job text_layers: baja la cara normal 400 y la negrita real 700, nunca la cursiva ni la ligera que el CSS lista antes', () => {
+      const fuentes = [...new Set(llamadas.filter((l) => typeof l === 'string' && /\.ttf$/.test(l)))].sort();
+      assert.deepEqual(fuentes, ['GET https://fonts.test/f-b.ttf', 'GET https://fonts.test/f.ttf']);
     });
     caso('job text_layers: no llama a HeyGen, Veo, ImageLab ni lab_configs', () => {
       assert.deepEqual(llamadas.filter((l) => /heygen|aiplatform|lab_configs|\/api\/compose|videolab_params/.test(l)), []);
