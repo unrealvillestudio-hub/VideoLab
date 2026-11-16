@@ -604,15 +604,39 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     return r;
   };
 
+  // 2026-11-16 — LAS CARAS MANDAN EN TODAS LAS CAPAS. Antes sólo el rol esquivaba caras: el CTA y un título clave cayeron
+  // sobre la cara de quien hablaba (prueba del set de conversación, lab_jobs 178d2258). Cada bloque se coloca en el ancla de su preset y,
+  // si en su tramo tapa una cara (`timeline.faces`) u otro texto, se corre en vertical —hacia arriba y hacia abajo,
+  // alternando— dentro de la zona segura y sobre los subtítulos. Si no hay lugar libre, queda en su ancla y se avisa
+  // (`warnings`): nunca se descarta texto en silencio.
+  const faces = facesPx(timeline, canvas);
+  const warnings = [];
+  const dodge = (rect, t, label) => {
+    const busy = [...faces.filter((f) => f.start_ms < t.end_ms && t.start_ms < f.end_ms),
+      ...blocks.filter((b) => b.layer !== 'caption_band' && overlapT(b, t)).map((b) => b.rect)];
+    if (!busy.some((f) => inter(rect, f))) return rect;
+    const step = Math.max(1, Math.round(H * 0.005));
+    for (let d = step; d <= H; d += step) {
+      for (const y of [rect.y - d, rect.y + d]) {
+        if (y < safe.y || y + rect.h > floorY + 0.5) continue;
+        const c = { ...rect, y };
+        if (!busy.some((f) => inter(c, f))) return c;
+      }
+    }
+    warnings.push(`TEXT_OVER_FACE: ${label} no tiene lugar libre de caras en la zona segura; queda en el ancla de su preset`);
+    return rect;
+  };
+
   // 2 · Gancho.
   if (tl.hook) {
     const row = resolveTextPreset(presets, tl.hook.preset_key, brandId, 'hook');
     const spec = row.spec, fam = family(spec, 'hook');
     const align = spec.align === 'left' ? 'left' : 'center';
     const m = measureBlock({ text: tl.hook.text, spec, layer: 'hook', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
-    const rect = place(m, spec, 'hook', align, 'top');
+    const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
+    const rect = dodge(place(m, spec, 'hook', align, 'top'), tH, 'hook');
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook'), textHex,
+    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex,
       emphasis: tl.hook.emphasis ?? [], styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
 
@@ -622,9 +646,10 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const spec = row.spec, fam = family(spec, 'key_title');
     const align = spec.align === 'left' ? 'left' : 'center';
     const m = measureBlock({ text: k.text, spec, layer: 'key_title', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
-    const rect = place(m, spec, `key_titles[${i}]`, align, 'center');
+    const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
+    const rect = dodge(place(m, spec, `key_titles[${i}]`, align, 'center'), tK, `key_titles[${i}]`);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`), textHex,
+    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex,
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
   if (tl.cta) {
@@ -632,15 +657,15 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const spec = row.spec, fam = family(spec, 'cta');
     const align = spec.align === 'left' ? 'left' : 'center';
     const m = measureBlock({ text: tl.cta.text, spec, layer: 'cta', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
-    const rect = place(m, spec, 'cta', align, 'above_captions');
-    const textHex = color(spec.color ?? 'text');
     const at = Number(tl.cta.at_ms);
-    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta'), textHex,
+    const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
+    const rect = dodge(place(m, spec, 'cta', align, 'above_captions'), tC, 'cta');
+    const textHex = color(spec.color ?? 'text');
+    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex,
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
 
   // 4 · Rol de cada persona: tercio inferior, sobre los subtítulos, al borde seguro izquierdo; sube si hay una cara.
-  const faces = facesPx(timeline, canvas);
   for (const [i, r] of (tl.roles ?? []).entries()) {
     if (r.show === false) continue;
     const row = resolveTextPreset(presets, r.preset_key, brandId, 'role');
@@ -716,7 +741,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
     ...events, '',
   ].join('\n');
-  return { ass, filters, families: [...families], blocks, safe };
+  return { ass, filters, families: [...families], blocks, safe, warnings };
 }
 
 /**

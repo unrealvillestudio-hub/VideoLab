@@ -102,6 +102,37 @@ export function conversationHeygenBody({ engine, imageUrl, audioUrl, title, dire
 }
 
 /** Filtro de ffmpeg que lleva una imagen o un clip al lienzo (cubre, con el foco horizontal de la toma). PURO. */
+/**
+ * LAS CARAS DE CADA TOMA, EN EL LIENZO (2026-11-16). ImageLab (`/api/compose` modo `faces`) devuelve las cajas en
+ * fracciones de la IMAGEN de la toma; el render la escala para cubrir el lienzo y la recorta con `focus_x` (`coverFilter`).
+ * Aquí se aplica la misma cuenta y cada caja queda en % del lienzo, con el tramo del segmento que muestra esa toma, y con
+ * un margen (`marginPct`, % del lienzo) por el movimiento del avatar y del encuadre. Una caja fuera del lienzo se descarta.
+ * `faces` por URL: `{ width, height, boxes: [{ x0, y0, x1, y1 }] }`. Sin dato de una URL, ese segmento no aporta caras. PURO.
+ */
+export function facesOnCanvas({ segments, facesByUrl, canvas, marginPct = 3 }) {
+  const { width: W, height: H } = canvas;
+  const out = [];
+  for (const sg of segments ?? []) {
+    const f = facesByUrl?.[sg.image_url];
+    if (!f || !(f.width > 0) || !(f.height > 0) || !Array.isArray(f.boxes)) continue;
+    const k = Math.max(W / f.width, H / f.height);
+    const sw = f.width * k, sh = f.height * k;
+    const fx = Number.isFinite(Number(sg.focus_x)) ? Math.min(1, Math.max(0, Number(sg.focus_x))) : 0.5;
+    const ox = (sw - W) * fx, oy = (sh - H) / 2;
+    const mx = W * marginPct / 100, my = H * marginPct / 100;
+    const start = Number(sg.start_ms), end = start + (Number(sg.to_ms) - Number(sg.from_ms));
+    for (const b of f.boxes) {
+      const x0 = Math.max(0, b.x0 * sw - ox - mx), x1 = Math.min(W, b.x1 * sw - ox + mx);
+      const y0 = Math.max(0, b.y0 * sh - oy - my), y1 = Math.min(H, b.y1 * sh - oy + my);
+      if (!(x1 > x0 && y1 > y0)) continue;
+      const r = (v) => Math.round(v * 100) / 100;
+      out.push({ box: { x: r(x0 / W * 100), y: r(y0 / H * 100), w: r((x1 - x0) / W * 100), h: r((y1 - y0) / H * 100) },
+        start_ms: start, end_ms: end, shot_id: sg.shot_id ?? null });
+    }
+  }
+  return out;
+}
+
 export function coverFilter(canvas, focusX = 0.5) {
   const { width: W, height: H } = canvas;
   return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}:(iw-${W})*${focusX}:(ih-${H})/2,setsar=1,fps=30`;

@@ -165,9 +165,37 @@ caso('un texto que no entra ni con el tamaño mínimo ⇒ VIDEOLAB_TEXT_DOES_NOT
   assert.throws(() => build({ textLayers: tl2 }), label('VIDEOLAB_TEXT_DOES_NOT_FIT'));
 });
 
-caso('dos bloques en el mismo tiempo y lugar ⇒ VIDEOLAB_TEXT_DOES_NOT_FIT', () => {
+// 2026-11-16 — dos bloques en el mismo tiempo: el segundo se corre en vertical (antes chocaban y el render se caía).
+caso('dos bloques en el mismo tiempo: el segundo se corre y no se pisan', () => {
   const tl = TL(); tl.key_titles.push({ text: 'Otra frase', at_ms: 3000, dur_ms: 1000, preset_key: 'key_title_stamp' });
-  assert.throws(() => build({ textLayers: tl }), /se pisan/);
+  const p = build({ textLayers: tl });
+  const k = p.blocks.filter((b) => b.layer === 'key_title');
+  assert.equal(k.length, 2);
+  const [a, c] = k.map((b) => b.rect);
+  assert.ok(!(a.x < c.x + c.w && c.x < a.x + a.w && a.y < c.y + c.h && c.y < a.y + a.h), 'los dos títulos no se pisan');
+});
+
+caso('sin lugar libre en el mismo tiempo ⇒ aviso y VIDEOLAB_TEXT_DOES_NOT_FIT (la comprobación dura sigue)', () => {
+  const tl = TL();
+  for (let i = 0; i < 12; i++) tl.key_titles.push({ text: `Frase número ${i} bastante larga para ocupar`, at_ms: 3000, dur_ms: 1000, preset_key: 'key_title_stamp' });
+  assert.throws(() => build({ textLayers: tl }), /se pisan|no entra|TEXT_DOES_NOT_FIT/);
+});
+
+// 2026-11-16 — LAS CARAS MANDAN EN TODAS LAS CAPAS: el título y el CTA se corren para no tapar una cara de su tramo.
+caso('título clave y CTA esquivan la cara declarada de su tramo; fuera del tramo, quedan en su ancla', () => {
+  const base = build();
+  const k0 = base.blocks.find((b) => b.layer === 'key_title').rect;
+  const kt = TL().key_titles[0];
+  // Una cara justo donde cae el título, en su tramo.
+  const face = { box: { x: (k0.x / 1080) * 100, y: (k0.y / 1920) * 100, w: (k0.w / 1080) * 100, h: (k0.h / 1920) * 100 },
+    start_ms: kt.at_ms, end_ms: kt.at_ms + kt.dur_ms };
+  const p = build({ timeline: { words: WORDS, faces: [face] } });
+  const k1 = p.blocks.find((b) => b.layer === 'key_title').rect;
+  assert.notEqual(k1.y, k0.y, 'el título se corrió');
+  assert.equal(p.warnings.length, 0);
+  // La misma cara en otro tramo no mueve nada.
+  const lejos = build({ timeline: { words: WORDS, faces: [{ ...face, start_ms: 90000, end_ms: 91000 }] } });
+  assert.equal(lejos.blocks.find((b) => b.layer === 'key_title').rect.y, k0.y);
 });
 
 caso('franja de identidad: drawbox con el modo y el ancho de los tokens y el color del rol', () => {
