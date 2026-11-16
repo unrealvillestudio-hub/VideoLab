@@ -147,4 +147,22 @@ t('marca N+1: el módulo no nombra marcas, personas ni estudios', () => {
   for (const w of ['ForumPHs', 'NeuroneSCF', 'Irja', 'Itzel', 'Sam ', 'loc_fphs']) assert.ok(!src.includes(w), `nombra ${w}`);
 });
 
+// 2026-11-16 — LAS CARAS DE CADA TOMA en el lienzo: misma cuenta que coverFilter (escala para cubrir, recorte con focus_x).
+t('facesOnCanvas: caja de la toma ⇒ % del lienzo con el recorte y el tramo del segmento; sin dato, nada', () => {
+  const canvas = { width: 1080, height: 1920 };
+  // Toma 9:16 exacta (1080x1920): la escala cubre justo, sin recorte. Caja en el centro.
+  const seg = { image_url: 'u1', focus_x: 0.5, start_ms: 1000, from_ms: 0, to_ms: 2000, shot_id: 'X1' };
+  const f = P.facesOnCanvas({ segments: [seg], facesByUrl: { u1: { width: 1080, height: 1920, boxes: [{ x0: 0.4, y0: 0.2, x1: 0.6, y1: 0.4 }] } }, canvas, marginPct: 0 });
+  assert.deepEqual(f, [{ box: { x: 40, y: 20, w: 20, h: 20 }, start_ms: 1000, end_ms: 3000, shot_id: 'X1' }]);
+  // Toma horizontal 16:9 (1920x1080) con focus_x 0: se ve el tercio izquierdo; una cara a la derecha queda fuera.
+  const h = { width: 1920, height: 1080, boxes: [{ x0: 0.05, y0: 0.4, x1: 0.15, y1: 0.6 }, { x0: 0.8, y0: 0.4, x1: 0.9, y1: 0.6 }] };
+  const g = P.facesOnCanvas({ segments: [{ ...seg, image_url: 'u2', focus_x: 0 }], facesByUrl: { u2: h }, canvas, marginPct: 0 });
+  assert.equal(g.length, 1, 'la cara fuera del recorte se descarta');
+  assert.ok(g[0].box.x < 30 && g[0].box.w > 0);
+  // Margen: la caja crece y no sale del lienzo.
+  const m = P.facesOnCanvas({ segments: [seg], facesByUrl: { u1: { width: 768, height: 1344, boxes: [{ x0: 0, y0: 0, x1: 0.1, y1: 0.1 }] } }, canvas, marginPct: 3 });
+  assert.equal(m[0].box.x, 0); assert.equal(m[0].box.y, 0); assert.ok(m[0].box.w > 10);
+  assert.deepEqual(P.facesOnCanvas({ segments: [seg], facesByUrl: {}, canvas }), []);
+});
+
 console.log('\nconversation: todo en verde');

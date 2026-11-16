@@ -277,7 +277,17 @@ sobrestima (`text_layout.metrics = 'estimate'`).
   declara una cara en su tramo (o hay otro texto en ese tramo), sube hasta no tocarla; sin lugar →
   `VIDEOLAB_TEXT_DOES_NOT_FIT`. Su entrada dura ≤ 350 ms y no rebota (un preset de rol más lento →
   `VIDEOLAB_BAD_REQUEST`).
-- Dos bloques que coinciden en el tiempo no pueden solaparse en el espacio → `VIDEOLAB_TEXT_DOES_NOT_FIT`.
+- **Gancho, títulos clave y CTA (v1.3.2, 2026-11-16):** se colocan en el ancla de su preset y, si en su tramo tapan una
+  cara de `timeline.faces` u otro texto, se corren en vertical dentro de la zona segura y sobre los subtítulos. Sin
+  lugar libre quedan en su ancla y `text_layout.warnings` lleva `TEXT_OVER_FACE` (nunca se descarta texto en silencio).
+- **Caras de cada toma (v1.3.2):** en la conversación, si el pedido no trae `timeline.faces`, VideoLab se las pide a
+  ImageLab (`/api/compose` modo `faces`, una llamada por imagen; el detector es de ImageLab) y las pone en el lienzo con
+  el mismo recorte del render (`facesOnCanvas`). Van en el `timeline` de salida, así «Editar texto» las reutiliza. Si
+  ImageLab no responde para una toma, esa toma no aporta caras y el render sigue.
+- Dos bloques que coinciden en el tiempo no pueden solaparse en el espacio: el segundo se corre; si no hay lugar →
+  `VIDEOLAB_TEXT_DOES_NOT_FIT`.
+  > ⛔ NO OPERATIVO — redacción anterior (v1.3.1), se conserva por trazabilidad: «Dos bloques que coinciden en el tiempo
+  > no pueden solaparse en el espacio → `VIDEOLAB_TEXT_DOES_NOT_FIT`.»
 - **Franja de identidad:** `drawbox` con `tokens.identity` de la marca (`mode` `edge_left` \| `edge_right`, `width_pct`,
   `full_bleed`); sin `identity` en los tokens → `VIDEOLAB_BAD_REQUEST`.
 
@@ -358,6 +368,11 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.3.2 (2026-11-16)** — Las caras mandan en todas las capas (Sam: «corrige lo de las caras de forma permanente»).
+  El gancho, los títulos clave y el CTA esquivan caras y otros textos de su tramo (antes, sólo el rol). En la conversación,
+  las caras de cada toma se piden a ImageLab (`/api/compose` modo `faces`) cuando el pedido no las trae. `text_layout`
+  suma `warnings`. Motivo medido: en la prueba del set de conversación (`lab_jobs` 178d2258), el CTA y un título clave
+  cayeron sobre la cara de quien hablaba.
 - **v1.3.0 (2026-11-16)** — Texto en pantalla editable por pieza (decisión de Sam 2026-11-16). Nuevo `params.mode =
   'text_layers'` (§4 ter.1): sólo texto sobre el video limpio, sin proveedores. `conversation` sube el montaje limpio
   (`clean_video`), devuelve el `timeline` de la voz y aplica `previousOutputs.text_layers` sobre el final (§4 ter.2).

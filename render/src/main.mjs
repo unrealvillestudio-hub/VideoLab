@@ -15,7 +15,7 @@ import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutp
 import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
-import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './conversation.mjs';
+import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs, facesOnCanvas } from './conversation.mjs';
 import { brandFont, brandFontFile } from './fonts.mjs';
 import { validateTextLayers, timelineWords, presetKeysOf, fontRolesNeeded, buildTextLayers, textLayersArgs, ttfMeasure,
   estimateMeasure, conversationTimeline } from './textlayers.mjs';
@@ -117,7 +117,7 @@ async function prepareTextLayers({ cfg, brandId, params, profile, canvas, textLa
     safeZone, canvas, durationMs, measure });
   const ass = join(work, 'text_layers.ass');
   writeFileSync(ass, plan.ass);
-  return { ass, fontsDir, filters: plan.filters, blocks: plan.blocks, metrics, canal };
+  return { ass, fontsDir, filters: plan.filters, blocks: plan.blocks, warnings: plan.warnings ?? [], metrics, canal };
 }
 
 /**
@@ -163,10 +163,36 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
       duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes },
     clean_video: { url: prev.base_video.url },
     text_layers: prev.text_layers,
-    text_layout: { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks },
+    text_layout: { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: tlr.warnings },
     provider: 'unrlvl', model_id: RATE_MODEL,
     cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
   };
+}
+
+/**
+ * Las caras de cada toma del plan, pedidas a ImageLab (`/api/compose` modo `faces`, una llamada por imagen distinta) y
+ * puestas en el lienzo (`facesOnCanvas`). Si ImageLab no responde para una toma, esa toma no aporta caras y se avisa en el
+ * log: el render sigue (el texto queda en su ancla, como antes de 2026-11-16).
+ */
+async function shotFaces({ il, brandId, pieceId, segments, canvas }) {
+  const urls = [...new Set((segments ?? []).map((s) => s.image_url).filter(Boolean))];
+  const facesByUrl = {};
+  await Promise.all(urls.map(async (url) => {
+    try {
+      const res = await fetch(`${il.api_endpoint.replace(/\/+$/, '')}/api/compose`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'faces', brand_id: brandId, image_url: url, piece_id: pieceId }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(out.faces) || !out.image) throw new Error(`${res.status} ${out.error_label ?? ''} ${String(out.error ?? '').slice(0, 160)}`);
+      facesByUrl[url] = { width: out.image.width, height: out.image.height, boxes: out.faces };
+    } catch (e) {
+      console.warn(`[VideoLab][CARAS] sin caras para ${url.split('/').pop()}: ${String(e?.message ?? e).slice(0, 200)}`);
+    }
+  }));
+  const faces = facesOnCanvas({ segments, facesByUrl, canvas });
+  console.log(`[VideoLab][CARAS] ${Object.keys(facesByUrl).length}/${urls.length} tomas con caras · ${faces.length} cajas en el lienzo`);
+  return faces;
 }
 
 export async function renderJob(jobId, env = process.env) {
@@ -283,10 +309,14 @@ export async function renderJob(jobId, env = process.env) {
     let tlr = null;
     if (isConversation) {
       timeline = conversationTimeline({ turns: prev.turns, cast: params.cast });
+      // 2026-11-16 — LAS CARAS DE CADA TOMA. Si el pedido no trae `timeline.faces`, se le piden a ImageLab (el detector es
+      // suyo) para cada toma del plan, y el texto las esquiva. Va en el timeline de salida: «Editar texto» las reutiliza.
+      if (prev.text_layers && !Array.isArray(prev.timeline?.faces)) {
+        timeline.faces = await shotFaces({ il, brandId, pieceId, segments: pod.plan.segments, canvas });
+      } else if (Array.isArray(prev.timeline?.faces)) timeline.faces = prev.timeline.faces;
       if (prev.text_layers) {
         tlr = await prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers: prev.text_layers,
-          timeline: { ...timeline, ...(Array.isArray(prev.timeline?.faces) ? { faces: prev.timeline.faces } : {}) },
-          durationMs: pod.plan.totalMs, work });
+          timeline, durationMs: pod.plan.totalMs, work });
       }
     }
 
@@ -515,7 +545,7 @@ export async function renderJob(jobId, env = process.env) {
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
       text_layer: layerMeta, unplaced_text: txt.unplaced,
       clean_video: cleanVideo, timeline, text_layers: tlr ? prev.text_layers : null,
-      text_layout: tlr ? { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks } : null,
+      text_layout: tlr ? { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: tlr.warnings } : null,
       cost_usd: Math.round(totalCost * 1e6) / 1e6, ledger_ids: ledgerIds.filter(Boolean),
     };
     await S.patch(cfg, 'lab_jobs', `id=eq.${enc(jobId)}`, { status: 'completed', output_parsed: output, completed_at: new Date().toISOString() });
