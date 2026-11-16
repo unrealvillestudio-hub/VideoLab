@@ -175,7 +175,7 @@ POST /api/execute                                  // mismo transporte: 202 + la
       captions?:   { enabled, preset_key, accent_role? } | null,     // accent_role: rol de brand_palette
       key_titles?: [{ text, at_ms, dur_ms, preset_key }],
       cta?:        { text, at_ms, dur_ms?, preset_key } | null,       // sin dur_ms, hasta el final
-      identity?:   { strip, strip_role? } } } }                       // strip_role: rol de brand_palette
+      identity?:   { strip, identity_role?, strip_role? } } } }        // identity_role: rol de brand_palette (strip_role: alias heredado, §4 ter.5)
 ```
 
 **Reglas de la forma** (las comprueba `api/execute` con la misma función que el job, `validateTextLayers`):
@@ -240,7 +240,7 @@ para que la migración de datos la copie tal cual.
 | `max_width_pct` | número (% del ancho seguro) | ancho máximo del bloque | 100 (role 80) |
 | `line_height` | número | interlineado para la geometría | 1,2 |
 | `anchor` | `top` \| `center` \| `above_captions` | dónde va el bloque | hook `top`, key_title `center`, cta `above_captions` |
-| `align` | `left` \| `center` | alineación (el rol siempre `left`) | `center` |
+| `align` | `left` \| `center` \| `right` | alineación (el rol siempre `left`; v1.4.0 suma `right`) | `center` |
 | `color`, `emphasis_color` | color | texto y palabras de `emphasis` | `text` (role `text_body`) / `accent` |
 | `outline` | `{ color, width_pct }` | contorno | sin contorno |
 | `shadow` | `{ color, depth_pct, alpha }` | sombra | sin sombra |
@@ -292,6 +292,71 @@ sobrestima (`text_layout.metrics = 'estimate'`).
   > no pueden solaparse en el espacio → `VIDEOLAB_TEXT_DOES_NOT_FIT`.»
 - **Franja de identidad:** `drawbox` con `tokens.identity` de la marca (`mode` `edge_left` \| `edge_right`, `width_pct`,
   `full_bleed`); sin `identity` en los tokens → `VIDEOLAB_BAD_REQUEST`.
+
+### 4 ter.5 Motor de dibujo, estilos en línea, alineación y franja (v1.4.0, 2026-11-16)
+
+**Motor por preset.** `spec.engine` = `ass` | `html` (por defecto `ass`). Si alguno de los presets del pedido declara
+`html`, la pieza se dibuja con el motor HTML propio (`render/src/html/`: página determinista capturada por CDP con
+`chrome-headless-shell`); si el motor HTML falla, la pieza sale igual con ASS y `text_layout.warnings` lleva
+`TEXT_ENGINE_FALLBACK`. Un `engine` desconocido → `VIDEOLAB_BAD_REQUEST`. La geometría (§4 ter.4) es la misma en los
+dos motores: el HTML consume los bloques que resuelve `buildTextLayers` y no coloca nada.
+
+**Captura.** `HeadlessExperimental.beginFrame` (tiempo virtual); si no está disponible, `Page.captureScreenshot`, que da
+el mismo píxel (medido en F1), y `text_layout.warnings` lleva `TEXT_CAPTURE_FALLBACK`.
+
+**Animación como dato (motor `html`).** `spec.motion = { tracks: [...] }`: cada pista anima un objetivo (`block`,
+`box`, `text`, `line`, `word`, `char`, `emphasis`, `number`, `rule`, `sheen`) con claves en ms, `stagger`, `repeat` y
+curva (`linear`, familia Penner, `cubic-bezier(...)` o `spring:k,c,m`). Sin `motion`, la entrada sale de `entry` como en
+§4 ter.3. Los presets HTML de la F0 están en `docs/html_presets_f0.json`.
+
+**Estilos en línea** (en `hook`, `key_titles[i]` y `cta`; mismo vocabulario que ImageLab):
+
+| Campo | Qué hace |
+|---|---|
+| `emphasis: [texto]` | color de énfasis (`emphasis_role` del bloque, o el hueco `accent`) |
+| `emphasis_role` | rol de `brand_palette` para el énfasis de ese bloque; un rol que la marca no tiene → aviso `TEXT_EMPHASIS_ROLE_UNKNOWN` y se usa el hueco |
+| `italic_spans: [texto]` | **invierte** la cursiva (en un preset cursivo, el tramo sale recto); sin cara cursiva, se sintetiza con aviso `TEXT_ITALIC_SYNTHESIZED` |
+| `bold_spans: [texto]` | **invierte** el peso (< 600 → 700; ≥ 600 → 400); sin cara negrita no se simula: aviso `TEXT_BOLD_UNAVAILABLE` |
+| `color_spans: [texto]` | color de resalte del bloque |
+
+Reglas: coincidencia literal y sensible a mayúsculas; primera aparición sin solaparse; el orden de la lista es la
+prioridad; hasta 3 tramos de hasta 60 caracteres por campo (si no → `VIDEOLAB_BAD_REQUEST`). Un tramo que no aparece en
+el texto → aviso `TEXT_SPAN_NOT_FOUND` (no es error). La medida del bloque es conservadora con los estilos aplicados.
+
+**Alineación.** `align` = `left` | `center` | `right`, en el bloque del pedido o en el `spec` del preset (el pedido
+manda).
+
+**Franja de identidad.** Pedido: `identity: { strip, identity_role? }`. `identity_role` es el rol de `brand_palette`;
+**`strip_role` se acepta como alias heredado** (si vienen los dos con roles distintos → `VIDEOLAB_BAD_REQUEST`). El
+modo y el grosor son dato de la marca (`tokens.identity`): `mode` = `none` | `edge_left` | `edge_right` | `edge_bottom`
+(por defecto `edge_left`), grosor = `width_pct` del lado corto del lienzo; `edge_bottom` ocupa todo el ancho.
+
+**Salida.** `text_layout` suma `engine` (`ass` | `html`), `capture` (`beginframe` | `screenshot` | `null`), `presets`
+(las `preset_key` usadas) y, por bloque, `align` y `segments` (tramos de posición por toma).
+
+**Posición por toma.** Si un bloque cruza un corte y en algún tramo taparía una cara, la geometría lo parte en
+`segments` y lo coloca por tramo (con paso suave entre tramos en el motor `html`); la entrada va sólo en el primer tramo
+y la salida sólo en el último. Si en un tramo no hay lugar ni al tamaño mínimo, queda en su ancla con `TEXT_OVER_FACE`.
+
+### 4 ter.6 Vista previa fiel — `POST /api/text-scene` y el runtime versionado (v1.4.0)
+
+```
+POST /api/text-scene                        // síncrono, sin job ni costo de proveedor
+{ brandId,
+  params: { platform, format: 'reel', safe_zone_canal?, canvas? },
+  previousOutputs: { text_layers, timeline? },
+  duration_ms }                             // duración del video limpio
+→ 200 { status: 'ok', engine: 'ass' | 'html', fidelity: 'same_engine' | 'approximate',
+        runtime_url: '/engine/<versión>/runtime.mjs', scene, text_layout }
+```
+
+La escena sale del mismo código que el job (`render/src/textprep.mjs`), con la geometría ya resuelta. Quien previsualiza
+importa `runtime_url` (módulo ES servido por VideoLab, misma versión que el despliegue, caché inmutable), llama a
+`loadFonts(scene)`, `mount(root, scene)` y, en cada fotograma de su `<video>`, `seek(video.currentTime * 1000)`. Con
+presets `html` la vista previa usa el mismo código de dibujo que el job (`fidelity: 'same_engine'`); con presets `ass`
+es una aproximación (`approximate`). `GET /engine/<versión>/<módulo>` sirve sólo `ease.mjs`, `keyframes.mjs` y
+`runtime.mjs`; otra versión u otro archivo → 404. Errores: forma inválida o texto que no cabe → 400 con su
+`error_label`; el resto → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
 ## 5. Salida
 
@@ -370,6 +435,15 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.4.0 (2026-11-16)** — Motor HTML propio (F1, objetivo validado por Sam: dibujo determinista, preset = plantilla
+  como dato, 60 s en ≤ 5 min). `spec.engine` (`ass` por defecto y respaldo) y `spec.motion`; estilos en línea con el
+  vocabulario de ImageLab (`emphasis_role`, `italic_spans`, `bold_spans`, `color_spans`); `align` con `right`; franja con
+  `identity_role` y, en los tokens de la marca, `mode` `none` | `edge_left` | `edge_right` | `edge_bottom`; posición por toma (`segments`);
+  `text_layout.engine`, `capture` y `presets`; vista previa `POST /api/text-scene` + `/engine/<versión>/runtime.mjs`
+  (§4 ter.5 y §4 ter.6). Avisos nuevos (no son `error_label`): `TEXT_ENGINE_FALLBACK`, `TEXT_CAPTURE_FALLBACK`,
+  `TEXT_SPAN_NOT_FOUND`, `TEXT_ITALIC_SYNTHESIZED`, `TEXT_BOLD_UNAVAILABLE`, `TEXT_EMPHASIS_ROLE_UNKNOWN`. Compatible
+  hacia atrás: sin los campos nuevos, idéntico a v1.3.3. **Alias heredado:** `identity.strip_role` se sigue aceptando;
+  se retira en un PR posterior, cuando el Orchestrator escriba sólo `identity_role` (código primero, dato después).
 - **v1.3.3 · aclaración (2026-11-16)** — `parentJobId`, cuando viaja, es **un `lab_jobs.id`**: el job del lab que produjo
   el video (en el modo `text_layers`, `assets.video.lab_job_id` de la pieza). Un id de otra tabla viola la FK
   `lab_jobs_parent_job_id_fkey`; antes salía como `VIDEOLAB_PROVIDER_FAILED` 502 y ahora sale como
