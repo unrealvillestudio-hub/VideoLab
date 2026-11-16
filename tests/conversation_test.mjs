@@ -134,6 +134,12 @@ t('ffmpeg: el movimiento de quien habla mantiene el lienzo y el largo del tramo'
   assert.equal(v.width, 1080); assert.equal(v.height, 1920); assert.ok(Math.abs(Number(pr.format.duration) - 2) < 0.07);
 });
 
+t('consentimiento: la persona sintética no lo necesita; la real y la sin marcar sí; la ausente falla', () => {
+  const r = P.speakersNeedingConsent(['a', 'b', 'c'], [{ id: 'a', person_kind: 'synthetic' }, { id: 'b', person_kind: 'real' }, { id: 'c', person_kind: null }]);
+  assert.deepEqual(r.need, ['b', 'c']); assert.deepEqual(r.synthetic, ['a']);
+  assert.throws(() => P.speakersNeedingConsent(['a', 'z'], [{ id: 'a', person_kind: 'synthetic' }]), /person_blueprints/);
+});
+
 t('marca N+1: el módulo no nombra marcas, personas ni estudios', () => {
   // Sólo el código: los comentarios pueden citar quién aprobó una regla.
   const src = execFileSync('cat', [new URL('../render/src/conversation.mjs', import.meta.url).pathname]).toString()

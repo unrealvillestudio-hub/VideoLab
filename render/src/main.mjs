@@ -15,7 +15,7 @@ import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutp
 import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
-import { planConversation, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './conversation.mjs';
+import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs } from './conversation.mjs';
 import { brandFont, brandFontFile } from './fonts.mjs';
 import { validateTextLayers, timelineWords, presetKeysOf, fontRolesNeeded, buildTextLayers, textLayersArgs, ttfMeasure,
   estimateMeasure, conversationTimeline } from './textlayers.mjs';
@@ -261,7 +261,12 @@ export async function renderJob(jobId, env = process.env) {
       }
       const plan = planConversation({ catalog: catalogById(loc.raw_config?.shot_catalog), shots: prev.shots, turns: prev.turns,
         cast: params.cast, defaultEngine: preset.motion?.avatar?.engine ?? null, technique });
-      for (const pid of plan.speakers) {
+      // Real o sintética es dato de la ficha (person_blueprints.person_kind, migración 20261116153000): una persona
+      // sintética no tiene a nadie que consienta; real o sin marcar sí necesita su consentimiento vigente.
+      const people = await S.select(cfg, `person_blueprints?id=in.(${plan.speakers.map(enc).join(',')})&select=id,person_kind`);
+      const consent = speakersNeedingConsent(plan.speakers, people);
+      plan.synthetic_speakers = consent.synthetic;
+      for (const pid of consent.need) {
         const ok = await S.select(cfg, `person_consents?person_blueprint_id=eq.${enc(pid)}&scope=eq.avatar&authorized=is.true&revoked_at=is.null&select=id`);
         if (!ok.length) throw new RenderError('VIDEOLAB_CONSENT_MISSING', `la persona ${pid} no tiene consentimiento vigente de avatar`);
       }
@@ -504,7 +509,7 @@ export async function renderJob(jobId, env = process.env) {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
         duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
-      conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
+      conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, synthetic_speakers: pod.plan.synthetic_speakers ?? [], segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
