@@ -102,7 +102,7 @@ export function stateAt(tracks, target, t, block, unit = null) {
       const times = tr.repeat.times != null ? Number(tr.repeat.times) : Infinity;
       const k = Math.floor(local / every);
       if (k < times) local -= k * every;
-      else local -= (times - 1) * every + every;   // pasadas las repeticiones, queda en su última clave
+      else local = Infinity;   // pasadas las repeticiones, queda en su última clave
     }
     for (const p of Object.keys(PROPS)) {
       const v = propAt(tr.keys, p, local);

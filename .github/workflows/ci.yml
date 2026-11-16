@@ -20,5 +20,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm install
         working-directory: .
+      # Motor HTML (F0, 2026-11-16): la prueba de determinismo de tests/html_engine_test.mjs captura con Chromium.
+      # Sin Playwright se salta, y entonces nadie vigila la huella por fotograma; por eso se instala aquí, sin tocar
+      # package.json ni el lock (el job de render todavía no lo usa).
+      - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+        working-directory: .
       - run: npm test
         working-directory: .
