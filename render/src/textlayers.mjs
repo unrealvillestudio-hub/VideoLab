@@ -47,6 +47,35 @@ const pos = (v) => v != null && Number.isFinite(Number(v)) && Number(v) > 0;
  * Comprueba la forma de `text_layers` (contrato §4 ter.1). `words` son las palabras del timeline: si los subtítulos
  * están encendidos, tienen que existir. Lanza VIDEOLAB_BAD_REQUEST. PURO.
  */
+// 2026-11-16 — BLOQUES COLOCADOS A MANO (contrato v1.3.3; «bloques a mano» v1, objetivo validado por Sam). `place` =
+// { x_pct, y_pct, zoom }: centro del bloque en % de la ZONA SEGURA y zoom sobre el tamaño del preset. Mismo rango de zoom
+// que el `text_scale` de ImageLab. Con `place` manda el operador: el bloque no esquiva caras y se avisa si tapa una.
+export const PLACE_ZOOM_MIN = 0.7;
+export const PLACE_ZOOM_MAX = 1.3;
+/** El spec de un preset con el zoom del operador: tamaño de partida y mínimo multiplicados. PURO. */
+export function zoomSpec(spec, zoom) {
+  const z = Number.isFinite(Number(zoom)) ? Number(zoom) : 1;
+  if (z === 1) return spec;
+  const from = num(spec.size_pct, 4);
+  return { ...spec, size_pct: Math.round(from * z * 100) / 100, min_size_pct: Math.round(num(spec.min_size_pct, from) * z * 100) / 100 };
+}
+
+/** Valida una colocación. `zoomOnly`: sólo `zoom` (subtítulos). PURO. */
+export function validatePlace(p, where, { zoomOnly = false } = {}) {
+  if (p == null) return;
+  if (!obj(p)) bad(`${where}.place debe ser un objeto { x_pct, y_pct, zoom }`);
+  const z = Number(p.zoom ?? 1);
+  if (!(Number.isFinite(z) && z >= PLACE_ZOOM_MIN && z <= PLACE_ZOOM_MAX)) bad(`${where}.place.zoom debe estar entre ${PLACE_ZOOM_MIN} y ${PLACE_ZOOM_MAX}`);
+  if (zoomOnly) {
+    if (p.x_pct != null || p.y_pct != null) bad(`${where}.place sólo admite zoom (la banda de subtítulos es fija)`);
+    return;
+  }
+  for (const k of ['x_pct', 'y_pct']) {
+    const v = Number(p[k]);
+    if (p[k] == null || !(Number.isFinite(v) && v >= 0 && v <= 100)) bad(`${where}.place.${k} debe estar entre 0 y 100`);
+  }
+}
+
 export function validateTextLayers(tl, { words = null } = {}) {
   if (!obj(tl)) bad('text_layers debe ser un objeto');
   const key = (v, where) => { if (!str(v)) bad(`${where}.preset_key vacío`); };
@@ -59,6 +88,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
     if (!nonNeg(h.start_ms)) bad('hook.start_ms debe ser ≥ 0');
     if (!(nonNeg(h.end_ms) && Number(h.end_ms) > Number(h.start_ms))) bad('hook.end_ms debe ser mayor que start_ms');
     if (h.emphasis != null && !(Array.isArray(h.emphasis) && h.emphasis.every(str))) bad('hook.emphasis debe ser una lista de textos');
+    validatePlace(h.place, 'hook');
     layers++;
   }
   if (tl.roles != null) {
@@ -70,6 +100,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
       txt(r.text, `roles[${i}]`); key(r.preset_key, `roles[${i}]`);
       if (!nonNeg(r.at_ms)) bad(`roles[${i}].at_ms debe ser ≥ 0`);
       if (!pos(r.dur_ms)) bad(`roles[${i}].dur_ms debe ser > 0`);
+      validatePlace(r.place, `roles[${i}]`);
       layers++;
     });
   }
@@ -80,6 +111,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
       key(c.preset_key, 'captions');
       if (c.accent_role != null && !str(c.accent_role)) bad('captions.accent_role debe ser un rol de brand_palette');
       if (words != null && (!Array.isArray(words) || !words.length)) bad('los subtítulos necesitan timeline.words');
+      validatePlace(c.place, 'captions', { zoomOnly: true });
       layers++;
     }
   }
@@ -90,6 +122,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
       txt(k.text, `key_titles[${i}]`); key(k.preset_key, `key_titles[${i}]`);
       if (!nonNeg(k.at_ms)) bad(`key_titles[${i}].at_ms debe ser ≥ 0`);
       if (!pos(k.dur_ms)) bad(`key_titles[${i}].dur_ms debe ser > 0`);
+      validatePlace(k.place, `key_titles[${i}]`);
       layers++;
     });
   }
@@ -99,6 +132,7 @@ export function validateTextLayers(tl, { words = null } = {}) {
     txt(c.text, 'cta'); key(c.preset_key, 'cta');
     if (!nonNeg(c.at_ms)) bad('cta.at_ms debe ser ≥ 0');
     if (c.dur_ms != null && !pos(c.dur_ms)) bad('cta.dur_ms debe ser > 0');
+    validatePlace(c.place, 'cta');
     layers++;
   }
   if (tl.identity != null) {
@@ -533,7 +567,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   const clipSafe = `\\clip(${safe.x},${safe.y},${safe.x1},${safe.y1})`;
 
   /** Dibuja un bloque ya colocado: caja, filete y texto. */
-  const draw = ({ layer, key, spec, m, rect, t, textHex, emphasis = [], styleName, fam, align }) => {
+  const draw = ({ layer, key, spec, m, rect, t, textHex, emphasis = [], styleName, fam, align, placed = 'auto' }) => {
     const dur = t.end_ms - t.start_ms;
     const ruleOff = m.rule && m.rule.position === 'above' ? m.rule.th + m.rule.gap : 0;
     const content = { x: rect.x, y: rect.y + ruleOff, w: rect.w, h: rect.h - (m.rule ? m.rule.th + m.rule.gap : 0) };
@@ -566,7 +600,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const mv = motion(spec, { kind: 'text', x: tx, y: ty, rect, canvas, durMs: dur });
     const body = blockText(m, spec, { emphasis, baseColor: assColor(textHex), emphasisColor: assColor(color(spec.emphasis_color ?? 'accent')), durMs: dur });
     events.push(`Dialogue: 2,${ts(t.start_ms)},${ts(t.end_ms)},${styleName},,0,0,0,,{\\an${align === 'center' ? 8 : 7}${mv.tags}${mv.clipped ? '' : clipSafe}}${body}`);
-    blocks.push({ layer, preset_key: key, rect: { x: R(rect.x), y: R(rect.y), w: R(rect.w), h: R(rect.h) }, start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length });
+    blocks.push({ layer, preset_key: key, rect: { x: R(rect.x), y: R(rect.y), w: R(rect.w), h: R(rect.h) }, start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed });
   };
 
   // 1 · Banda de subtítulos (fija abajo de la zona segura): el resto se coloca respecto de ella.
@@ -574,7 +608,8 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   let capPlan = null;
   if (tl.captions && tl.captions.enabled !== false) {
     const row = resolveTextPreset(presets, tl.captions.preset_key, brandId, 'caption');
-    const spec = row.spec;
+    // Zoom del operador sobre los subtítulos (contrato v1.3.3): sólo tamaño; la banda sigue fija abajo.
+    const spec = tl.captions.place?.zoom != null ? zoomSpec(row.spec, Number(tl.captions.place.zoom)) : row.spec;
     const words = timelineWords(timeline);
     if (!words.length) bad('los subtítulos necesitan timeline.words');
     const fam = family(spec, 'caption');
@@ -644,10 +679,25 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
       } catch (e) { if (v === sizes[sizes.length - 1] && !first) throw e; continue; }
       if (!first) first = { m, rect: r0 };
       const r = freeSpot(r0, t);
-      if (r) return { m, rect: r };
+      if (r) return { m, rect: r, placed: 'auto' };
     }
     warnings.push(`TEXT_OVER_FACE: ${label} no tiene lugar libre de caras ni de otro texto en la zona segura, ni al tamaño mínimo; queda en el ancla de su preset`);
-    return first;
+    return { ...first, placed: 'auto' };
+  };
+
+  // BLOQUE COLOCADO A MANO (contrato v1.3.3). El centro en % de la zona segura y el zoom sobre el preset; se acota a la
+  // zona segura y por encima de los subtítulos. No esquiva: si tapa una cara o pisa otro texto en su tramo, avisa.
+  const placeManual = ({ text, spec, layer, label, t, maxW, fam, place: pl }) => {
+    const m = measureBlock({ text, spec: zoomSpec(spec, Number(pl.zoom ?? 1)), layer, canvas, maxW, measure, family: fam });
+    if (floorY - safe.y < m.h) nofit(`${label}: el bloque mide ${m.h} px y no entra entre la zona segura y los subtítulos`);
+    const cx = safe.x + safe.w * Number(pl.x_pct) / 100, cy = safe.y + safe.h * Number(pl.y_pct) / 100;
+    const x0 = cx - m.w / 2, y0 = cy - m.h / 2;
+    const x = Math.min(Math.max(x0, safe.x), safe.x1 - m.w), y = Math.min(Math.max(y0, safe.y), floorY - m.h);
+    if (Math.abs(x - x0) > 0.5 || Math.abs(y - y0) > 0.5) warnings.push(`TEXT_PLACE_CLAMPED: ${label} se acotó a la zona segura`);
+    const rect = { x, y, w: m.w, h: m.h };
+    if (faces.some((f) => f.start_ms < t.end_ms && t.start_ms < f.end_ms && inter(rect, f))) warnings.push(`TEXT_PLACED_OVER_FACE: ${label} tapa una cara (lo colocó el operador)`);
+    if (blocks.some((b) => b.layer !== 'caption_band' && overlapT(b, t) && inter(rect, b.rect))) warnings.push(`TEXT_PLACED_OVERLAP: ${label} pisa otro texto (lo colocó el operador)`);
+    return { m, rect, placed: 'manual' };
   };
 
   // 2 · Gancho.
@@ -656,10 +706,11 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const spec = row.spec, fam = family(spec, 'hook');
     const align = spec.align === 'left' ? 'left' : 'center';
     const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
-    const { m, rect } = fitFree({ text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
-      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
+    const hookArgs = { text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
+    const { m, rect, placed } = tl.hook.place ? placeManual({ ...hookArgs, place: tl.hook.place }) : fitFree(hookArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex,
+    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex, placed,
       emphasis: tl.hook.emphasis ?? [], styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
 
@@ -669,10 +720,11 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const spec = row.spec, fam = family(spec, 'key_title');
     const align = spec.align === 'left' ? 'left' : 'center';
     const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
-    const { m, rect } = fitFree({ text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
-      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
+    const kArgs = { text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
+    const { m, rect, placed } = k.place ? placeManual({ ...kArgs, place: k.place }) : fitFree(kArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex,
+    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex, placed,
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
   if (tl.cta) {
@@ -681,10 +733,11 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const align = spec.align === 'left' ? 'left' : 'center';
     const at = Number(tl.cta.at_ms);
     const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
-    const { m, rect } = fitFree({ text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
-      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
+    const cArgs = { text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
+    const { m, rect, placed } = tl.cta.place ? placeManual({ ...cArgs, place: tl.cta.place }) : fitFree(cArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex,
+    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex, placed,
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
   }
 
@@ -694,9 +747,18 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const row = resolveTextPreset(presets, r.preset_key, brandId, 'role');
     const spec = row.spec, fam = family(spec, 'role');
     const text = str(spec.split_on) ? String(r.text).split(spec.split_on).map((s) => s.trim()).filter(Boolean).join('\n') : r.text;
-    const m = measureBlock({ text, spec: { max_lines: str(spec.split_on) ? 4 : 2, ...spec }, layer: 'role', canvas,
-      maxW: safe.w * num(spec.max_width_pct, 80) / 100, measure, family: fam });
     const t = span(Number(r.at_ms), Number(r.at_ms) + Number(r.dur_ms), `roles[${i}]`);
+    const roleSpec = { max_lines: str(spec.split_on) ? 4 : 2, ...spec };
+    const roleMaxW = safe.w * num(spec.max_width_pct, 80) / 100;
+    // Colocado a mano (contrato v1.3.3): manda el operador, se avisa si tapa.
+    if (r.place) {
+      const pm = placeManual({ text, spec: roleSpec, layer: 'role', label: `roles[${i}]`, t, maxW: roleMaxW, fam, place: r.place });
+      const hex = color(spec.color ?? 'text_body');
+      draw({ layer: 'role', key: row.preset_key, spec, m: pm.m, rect: pm.rect, t, textHex: hex, placed: 'manual',
+        styleName: styleFor(`R_${row.preset_key}`, fam, spec, pm.m, hex), fam, align: 'left' });
+      continue;
+    }
+    const m = measureBlock({ text, spec: roleSpec, layer: 'role', canvas, maxW: roleMaxW, measure, family: fam });
     // Obstáculos: las caras de ese tramo y los bloques ya colocados que coinciden en el tiempo.
     const busy = [...faces.filter((f) => f.start_ms < t.end_ms && t.start_ms < f.end_ms),
       ...blocks.filter((b) => b.layer !== 'caption_band' && overlapT(b, t)).map((b) => b.rect)];
@@ -751,6 +813,8 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   for (const b of blocks) if (!inside(b.rect, safe)) nofit(`${b.layer} (${b.preset_key}) sale de la zona segura`);
   for (let i = 0; i < blocks.length; i++) {
     for (let j = i + 1; j < blocks.length; j++) {
+      // Dos bloques automáticos nunca se pisan; si uno lo colocó el operador, ya se avisó (TEXT_PLACED_OVERLAP).
+      if (blocks[i].placed === 'manual' || blocks[j].placed === 'manual') continue;
       if (overlapT(blocks[i], blocks[j]) && inter(blocks[i].rect, blocks[j].rect)) {
         nofit(`${blocks[i].layer} (${blocks[i].preset_key}) y ${blocks[j].layer} (${blocks[j].preset_key}) se pisan entre ${Math.max(blocks[i].start_ms, blocks[j].start_ms)} y ${Math.min(blocks[i].end_ms, blocks[j].end_ms)} ms`);
       }

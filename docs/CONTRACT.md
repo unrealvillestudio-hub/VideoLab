@@ -277,6 +277,8 @@ sobrestima (`text_layout.metrics = 'estimate'`).
   declara una cara en su tramo (o hay otro texto en ese tramo), sube hasta no tocarla; sin lugar →
   `VIDEOLAB_TEXT_DOES_NOT_FIT`. Su entrada dura ≤ 350 ms y no rebota (un preset de rol más lento →
   `VIDEOLAB_BAD_REQUEST`).
+- **Bloques colocados a mano (v1.3.3):** con `place` en un bloque, manda el operador (ver §10, v1.3.3). Sin `place`, la
+  colocación automática de abajo.
 - **Gancho, títulos clave y CTA (v1.3.2, 2026-11-16):** se colocan en el ancla de su preset y, si en su tramo tapan una
   cara de `timeline.faces` u otro texto, se corren en vertical dentro de la zona segura y sobre los subtítulos. Sin
   lugar libre quedan en su ancla y `text_layout.warnings` lleva `TEXT_OVER_FACE` (nunca se descarta texto en silencio).
@@ -368,6 +370,12 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.3.3 (2026-11-16)** — Bloques colocados a mano (objetivo validado por Sam: una sola ventana de texto para imagen y
+  video con X, Y y zoom por bloque). `hook`, `key_titles[i]`, `cta` y `roles[i]` aceptan `place: { x_pct, y_pct, zoom }`
+  (centro del bloque en % de la zona segura; zoom 0,7–1,3 sobre el tamaño del preset); `captions.place` sólo `{ zoom }`.
+  Con `place` el bloque no esquiva: se acota a la zona segura (`TEXT_PLACE_CLAMPED`) y avisa si tapa una cara
+  (`TEXT_PLACED_OVER_FACE`) o pisa otro texto (`TEXT_PLACED_OVERLAP`). `text_layout.blocks[].placed` = `auto` | `manual`.
+  Sin `place`, idéntico a v1.3.2.
 - **v1.3.2 (2026-11-16)** — Las caras mandan en todas las capas (Sam: «corrige lo de las caras de forma permanente»).
   El gancho, los títulos clave y el CTA esquivan caras y otros textos de su tramo (antes, sólo el rol). En la conversación,
   las caras de cada toma se piden a ImageLab (`/api/compose` modo `faces`) cuando el pedido no las trae. `text_layout`
