@@ -84,11 +84,12 @@ async function logRenderCost(cfg, { brandId, jobId, pieceId, platform, rate, t0,
 /**
  * Capas de texto editables (contrato v1.3.0, §4 ter): lee el dato de la marca (presets, paleta, tipografía, tokens de
  * identidad y la zona segura del canal), baja sus fuentes y arma el guion ASS. Todo ANTES de gastar en proveedores.
- * El canal de la zona segura sale del perfil de la plataforma (`platform_format_profiles.image_canal`); si el perfil
- * no lo declara, del pedido (`params.safe_zone_canal`); sin ninguno → VIDEOLAB_BAD_REQUEST.
+ * El canal de la zona segura sale del perfil de la plataforma (`platform_format_profiles.video_text_canal`, migración
+ * 20261116130000 de unrlvl-iid-functions; no `image_canal`, que es el canal de los presets de imagen); si el perfil no lo
+ * declara, del pedido (`params.safe_zone_canal`); sin ninguno → VIDEOLAB_BAD_REQUEST.
  */
 async function prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers, timeline, durationMs, work }) {
-  const canal = profile?.image_canal ?? params.safe_zone_canal ?? null;
+  const canal = profile?.video_text_canal ?? params.safe_zone_canal ?? null;
   if (!canal) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el perfil de ${params.platform}/reel no declara canal de zona segura: el pedido necesita params.safe_zone_canal`);
   const zonas = await S.select(cfg, `imagelab_overlay_tokens?canal=eq.${enc(canal)}&active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=brand_id,tokens`);
   const zona = zonas.find((z) => z.brand_id === brandId) ?? zonas.find((z) => z.brand_id == null);

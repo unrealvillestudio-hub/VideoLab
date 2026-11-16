@@ -282,7 +282,7 @@ if (hayLibass && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
     llamadas.push(`${m} ${u}`);
     if (u.includes('/rest/v1/lab_jobs') && m === 'GET') return resp([{ id: JOB, brand_id: BRAND, payload }]);
     if (u.includes('/rest/v1/lab_jobs') && m === 'PATCH') { llamadas.push(init.body); return resp('', 204); }
-    if (u.includes('platform_format_profiles')) return resp([{ platform: 'meta_fb', format: 'reel', canvas_width: 1080, canvas_height: 1920, image_canal: null }]);
+    if (u.includes('platform_format_profiles')) return resp([{ platform: 'meta_fb', format: 'reel', canvas_width: 1080, canvas_height: 1920, video_text_canal: null }]);
     if (u.includes('/rpc/ops_resolve_rate')) return resp([{ rate_usd: 0.000044, rate_id: 'tarifa-1', effective_from: '2026-01-01' }]);
     if (u.includes('/rpc/ops_log_generation')) return resp('asiento-1');
     if (u === 'https://media.test/clean.mp4') return resp(readFileSync(join(dir, 'base.mp4')));

@@ -262,7 +262,7 @@ sobrestima (`text_layout.metrics = 'estimate'`).
 ### 4 ter.4 Geometría y anti-choque
 
 - **Zona segura:** `imagelab_overlay_tokens.tokens.layout.safe_zone_pct` del canal. El canal sale de
-  `intel.platform_format_profiles.image_canal`; si el perfil no lo declara (hoy, los perfiles `reel` no lo declaran
+  `intel.platform_format_profiles.video_text_canal` (columna propia desde la migración `20261116130000`; `image_canal` es el canal de los presets de imagen y no se usa aquí); si el perfil no lo declara (antes de esa migración, los perfiles `reel` no lo declaraban
   [medido 2026-11-16]), del pedido (`params.safe_zone_canal`); sin ninguno → `VIDEOLAB_BAD_REQUEST`. La fila de la marca
   para ese canal manda sobre la del sistema.
 - Todo bloque, con su caja, contorno, sombra y filete, cae **dentro** de la zona segura; cada evento lleva además un
