@@ -16,7 +16,7 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 
 | Pregunta | Respuesta | Grado |
 |---|---|---|
-| ¿Cabe en 5 min por 60 s? | **Sí.** {{T2}} s con 2 CPU para el video completo (58,3 s, 1.748 fotogramas). Tope: 300 s. | medido en el sandbox, 2 CPU con `taskset` |
+| ¿Cabe en 5 min por 60 s? | **Sí.** 131,6 s con 2 CPU para el video completo (58,3 s, 1.748 fotogramas). Tope: 300 s. | medido en el sandbox, 2 CPU con `taskset` |
 | ¿Mismo pedido → mismo video? | **Sí.** Misma huella en los 1.748 fotogramas y el mismo MP4 byte a byte, entre dos corridas y entre 4 y 2 CPU. | medido |
 | ¿Preset = plantilla guardada como dato? | **Sí.** Geometría, colores, fuentes y animación salen del dato (`spec` + `spec.motion`); el código no conoce ninguna marca. | medido (tests) |
 | ¿La geometría del contrato §4 ter.4 se respeta tal cual? | **Sí.** El motor recibe los `blocks` de `buildTextLayers` y no coloca nada; incluido `place` (v1.3.3). | medido (test y fixture real) |
@@ -164,27 +164,38 @@ node render/bench/motor_html_f0.mjs <fixture.json> <clean.mp4> <salida> --runs 2
 
 | Motor | 4 CPU | 2 CPU |
 |---|---|---|
-| **HTML (a), capturador propio** | {{T4A}} s / {{T4B}} s (dos corridas) | **{{T2}} s** |
+| **HTML (a), capturador propio** | 97,5 s / 97,1 s (dos corridas) | **131,6 s** |
 | HTML (b), núcleo de HyperFrames | 121,8 s / 117,7 s | 133,1 s |
-| ASS actual (libass), referencia | {{ASS4}} s | {{ASS2}} s |
+| ASS actual (libass), referencia | 35,0 s | 64,3 s |
 
 - Fotogramas capturados: **1.693 de 1.748** (los 55 sin texto no abren el navegador).
-- Captura por fotograma: **{{MSF4}} ms** con 4 CPU y **{{MSF2}} ms** con 2 CPU (medido, promedio).
-- **Extrapolación a Cloud Run (deducido):** el job tiene 2 vCPU. Con {{T2}} s medidos en 2 núcleos del sandbox, el
-  margen hasta 300 s es ×{{MARGEN}}. Una vCPU de Cloud Run puede ser más lenta que un núcleo de esta máquina; con el
-  margen medido, el tope se rompería sólo si fuera más de {{MARGEN}} veces más lenta. Se confirma en F1 con una
+- Captura por fotograma: **55 ms** con 4 CPU y **66 ms** con 2 CPU (medido, promedio).
+- **Extrapolación a Cloud Run (deducido):** el job tiene 2 vCPU. Con 131,6 s medidos en 2 núcleos del sandbox, el
+  margen hasta 300 s es ×2,28. Una vCPU de Cloud Run puede ser más lenta que un núcleo de esta máquina; con el
+  margen medido, el tope se rompería sólo si fuera más de 2,28 veces más lenta. Se confirma en F1 con una
   ejecución del job (no en la F0, que no despliega).
 
 ### 5.2 Tiempo por tramo (captura, 2 CPU)
 
-{{TRAMOS}}
+| Tramo | Preset | Fotogramas | Captura | ms/fotograma |
+|---|---|---|---|---|
+| gancho 0–3 s | `hook_char_rise` | 90 | 5,2 s | 57 |
+| título clave 10,15–12,75 s | `key_title_counter` | 78 | 5,7 s | 73 |
+| rol 20,91–24,71 s | `role_label_minimal` | 114 | 7,9 s | 70 |
+| título clave 28,97–31,57 s | `key_title_counter` | 78 | 5,9 s | 75 |
+| título clave 38,77–41,17 s | `key_title_rule` | 72 | 5,1 s | 71 |
+| CTA 51,31–58,27 s | `cta_card_spring` | 208 | 17,0 s | 82 |
+| sólo subtítulos | `caption_karaoke_accent` | 1.053 | 65,8 s | 62 |
+
+Cada tramo incluye los subtítulos que lleva debajo. El costo depende sobre todo del número de fotogramas con texto,
+no del preset: el CTA, el más cargado (caja, brillo, escalonado), cuesta 82 ms por fotograma.
 
 ### 5.3 Determinismo
 
 | Prueba | Resultado |
 |---|---|
-| Huella de los 1.748 fotogramas (sha256 de cada PNG), corrida 1 vs 2 | **idénticas** ({{DIGEST}}) |
-| MP4, corrida 1 vs 2 | **idéntico** (sha256 {{MP4}}) |
+| Huella de los 1.748 fotogramas (sha256 de cada PNG), corrida 1 vs 2 | **idénticas** (`e92a1fdc6f0b2bb4…`) |
+| MP4, corrida 1 vs 2 | **idéntico** (sha256 `c4b979a3234aeca2…`) |
 | MP4, 4 CPU vs 2 CPU | **idéntico** |
 | Opción (b), dos corridas y 2 CPU | huellas idénticas entre sí (`a3fd024a…`); MP4 idéntico (`7248e765…`) |
 
@@ -199,8 +210,8 @@ fotograma; corre en `npm test` y en CI (que ahora instala Chromium). Inyectada l
 
 | Qué | Medida |
 |---|---|
-| MP4 HTML (58,3 s) | {{BYTES_HTML}} bytes |
-| MP4 ASS actual (mismo pedido) | {{BYTES_ASS}} bytes |
+| MP4 HTML (58,3 s) | 13.732.373 (13,7 MB) bytes |
+| MP4 ASS actual (mismo pedido) | 12.976.248 (13,0 MB) bytes |
 | Tope del contrato | 50 MB |
 | Chromium headless shell (Playwright 1.63, build 1243) | **261 MB** en disco (medido, `du -sh`) |
 | `@hyperframes/engine` con sus dependencias, sin Chrome | 124 MB (medido, `du -sh node_modules`) |
@@ -220,7 +231,7 @@ los 14 renglones (entre 2 % y 9 % menor: la medida de la geometría es conservad
 
 | | (a) propio | (b) `@hyperframes/engine` 0.9.58 |
 |---|---|---|
-| Tiempo 60 s, 2 CPU | {{T2}} s | 133,1 s |
+| Tiempo 60 s, 2 CPU | 131,6 s | 133,1 s |
 | Determinista | sí | sí |
 | Modo de captura | `Page.captureScreenshot` | también `screenshot` (el motor descarta `beginFrame` en este entorno, con alfa y sin alfa) |
 | Dependencias nuevas | Playwright + Chromium | puppeteer, hono, linkedom, postcss y más: 124 MB sin Chrome; pide un `chrome-headless-shell` fijado por versión |
@@ -244,7 +255,10 @@ tope, se estudia ese modo (con su `LICENSE` si se reutiliza código).
 2. **El tamaño de letra de libass no es el de CSS.** La geometría mide con el avance real de la fuente a `px`
    (semántica de CSS); libass dibuja más pequeño a ese mismo número. Por eso en el ASS el texto no llena su caja y en
    el HTML sí: el HTML dibuja lo que la geometría midió.
-3. **El CTA de la pieza tapa una cara** (`TEXT_OVER_FACE`, ya en `text_layout.warnings` del job). Lo resuelve la
+3. **El MP4 del render ASS actual tampoco es idéntico entre máquinas.** Mismo pedido, mismo ASS: 12.976.248 bytes con
+   4 CPU y 12.976.547 con 2 CPU (medido en esta F0). Es la misma causa que se corrigió en el motor HTML (hilos de x264
+   según la máquina); en el ASS se corrige igual, con `-threads:v` fijo en `textLayersArgs`.
+4. **El CTA de la pieza tapa una cara** (`TEXT_OVER_FACE`, ya en `text_layout.warnings` del job). Lo resuelve la
    posición por tramo de toma (§4), objetivo de F1/F2.
 
 ---
