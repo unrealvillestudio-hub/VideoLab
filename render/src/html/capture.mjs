@@ -29,12 +29,17 @@ export function blankPng(W, H) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
-/** Argumentos de ffmpeg: video limpio + PNG por la entrada estándar → MP4 de la especificación (§5). PURO. */
-export function overlayArgs({ input, fps, filters = [], out }) {
+/**
+ * Argumentos de ffmpeg: video limpio + PNG por la entrada estándar → MP4 de la especificación (§5). PURO.
+ * `threads` FIJO a propósito: x264 elige sus hilos según las CPU de la máquina, y con otro número de hilos el MP4 sale
+ * distinto byte a byte aunque los fotogramas sean idénticos (medido en la F0: misma huella de fotogramas con 4 y con 2
+ * CPU, MP4 distinto). Con los hilos fijos, el mismo pedido da el mismo archivo en cualquier máquina.
+ */
+export function overlayArgs({ input, fps, filters = [], out, threads = 2 }) {
   const post = [...filters, 'format=yuv420p'].join(',');
   return ['-y', '-loglevel', 'error', '-i', input, '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', 'pipe:0',
     '-filter_complex', `[1:v]format=rgba[o];[0:v][o]overlay=0:0:format=auto:eof_action=pass[m];[m]${post}[v]`,
-    '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', String(fps),
+    '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', '-threads:v', String(threads), '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k', '-movflags', '+faststart', out];
 }
 
@@ -53,6 +58,7 @@ export async function renderHtmlLayers({ scene, fonts, input, out, chromium, fra
   const browser = await chromium.launch({ args: ['--font-render-hinting=none', '--disable-lcd-text', '--force-color-profile=srgb', '--disable-gpu'] });
   const timings = { launch_ms: 0, load_ms: 0, capture_ms: 0, encode_wait_ms: 0, total_ms: 0 };
   const hashes = [];
+  const frameMs = [];
   let captured = 0;
   let ff = null, ffDone = null, ffErr = '';
   try {
@@ -82,11 +88,13 @@ export async function renderHtmlLayers({ scene, fonts, input, out, chromium, fra
       const t = (i * 1000) / fps;
       let png, h;
       if (inSpan(t)) {
+        const tf = performance.now();
         await page.evaluate((ms) => window.__vl.seek(ms), t);
         const r = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true, optimizeForSpeed: false, captureBeyondViewport: false, clip: { x: 0, y: 0, width: W, height: H, scale: 1 } });
         png = Buffer.from(r.data, 'base64');
         h = createHash('sha256').update(png).digest('hex');
         captured++;
+        frameMs.push([i, performance.now() - tf]);
       } else { png = blank; h = blankHash; }
       hashes.push(h);
       if (onFrame) await onFrame(i, png);
@@ -98,7 +106,7 @@ export async function renderHtmlLayers({ scene, fonts, input, out, chromium, fra
     timings.encode_wait_ms = Math.round(performance.now() - te);
     timings.total_ms = Math.round(performance.now() - t0);
     const digest = createHash('sha256').update(hashes.join('\n')).digest('hex');
-    return { frames: total, captured, timings, hashes, digest, fit, spans };
+    return { frames: total, captured, timings, hashes, digest, fit, spans, frameMs };
   } finally {
     if (ff && ff.exitCode == null) ff.kill('SIGKILL');
     await browser.close();

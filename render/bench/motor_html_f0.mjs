@@ -67,9 +67,17 @@ for (let r = 1; r <= runs; r++) {
   const out = join(outDir, `html_run${r}.mp4`);
   const res = await renderHtmlLayers({ scene, fonts: usedFonts, input, out, chromium, frames });
   writeFileSync(join(outDir, `hashes_run${r}.txt`), res.hashes.join('\n') + '\n');
+  // Tiempo de captura por tramo: cada bloque (con sus subtítulos debajo) y los tramos sólo con subtítulos.
+  const at = (i) => (i * 1000) / scene.fps;
+  const per = scene.blocks.map((b) => {
+    const f = res.frameMs.filter(([i]) => at(i) >= b.start_ms && at(i) < b.end_ms);
+    return { layer: b.layer, preset_key: b.preset_key, start_ms: b.start_ms, end_ms: b.end_ms, frames: f.length, capture_ms: Math.round(f.reduce((s, [, ms]) => s + ms, 0)) };
+  });
+  const solo = res.frameMs.filter(([i]) => !scene.blocks.some((b) => at(i) >= b.start_ms && at(i) < b.end_ms));
+  per.push({ layer: 'solo_subtitulos', frames: solo.length, capture_ms: Math.round(solo.reduce((s, [, ms]) => s + ms, 0)) });
   const mp4sha = execFileSync('sha256sum', [out]).toString().split(' ')[0];
   result.runs.push({ run: r, ...res.timings, frames: res.frames, captured: res.captured, frames_digest: res.digest, mp4_sha256: mp4sha,
-    mp4_bytes: statSync(out).size, fit: r === 1 ? res.fit : undefined, spans: r === 1 ? res.spans : undefined });
+    mp4_bytes: statSync(out).size, per_tramo: per, ms_por_fotograma: Math.round(res.frameMs.reduce((s, [, ms]) => s + ms, 0) / Math.max(1, res.frameMs.length)), fit: r === 1 ? res.fit : undefined, spans: r === 1 ? res.spans : undefined });
   console.log(`run ${r}: total ${res.timings.total_ms} ms · captura ${res.timings.capture_ms} ms · ${res.captured}/${res.frames} fotogramas · huella ${res.digest.slice(0, 16)} · mp4 ${mp4sha.slice(0, 16)}`);
 }
 if (runs >= 2) {
