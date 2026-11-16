@@ -224,30 +224,38 @@ caso('los bancos de render/bench importan sólo nombres que existen en render/sr
   }
 });
 
-// DETERMINISMO con navegador real: dos capturas de la misma escena, misma huella por fotograma.
+// DETERMINISMO con navegador real (chrome-headless-shell por CDP crudo, F1).
+//  1) dos capturas de la misma escena dan la misma huella en cada fotograma;
+//  2) beginFrame y captureScreenshot dan EL MISMO PÍXEL (vigilancia R1.1): el respaldo no cambia el video.
 const FONT = ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].find(existsSync);
-let chromium = null;
-try { chromium = createRequire(import.meta.url)('playwright').chromium; } catch { /* sin Playwright */ }
-if (chromium && FONT) {
+const { findHeadlessShell } = await import('../render/src/html/cdp.mjs');
+const SHELL = findHeadlessShell();
+if (SHELL && FONT) {
+  const { renderHtmlLayers } = await import('../render/src/html/capture.mjs');
+  const typo = [{ role: 'display', font_family: 'Prueba Display' }, { role: 'body', font_family: 'Prueba Texto' }];
+  const sc = buildScene(args({ typography: typo }));
+  const bytes = readFileSync(FONT);
+  const fonts = typo.map((t) => ({ family: t.font_family, bytes, format: 'truetype' }));
+  // Fotogramas con texto en movimiento: entrada del gancho, contador del título y brillo del CTA.
+  const pick = [3, 9, 15, 90, 100, 140, 160, 175];
+  const run = async (mode) => {
+    const hs = [];
+    const r = await renderHtmlLayers({ scene: sc, fonts, browserPath: SHELL, mode, encode: false, frames: 176,
+      onFrame: (i, png) => { if (pick.includes(i)) hs.push(require_hash(png)); } });
+    return { hs, mode: r.mode, warnings: r.warnings };
+  };
   caso('determinismo: dos capturas de la misma escena dan la misma huella en cada fotograma', async () => {
-    const { renderHtmlLayers } = await import('../render/src/html/capture.mjs');
-    const typo = [{ role: 'display', font_family: 'Prueba Display' }, { role: 'body', font_family: 'Prueba Texto' }];
-    const s = buildScene(args({ typography: typo }));
-    const bytes = readFileSync(FONT);
-    const fonts = typo.map((t) => ({ family: t.font_family, bytes, format: 'truetype' }));
-    // Fotogramas con texto en movimiento: entrada del gancho, contador del título y brillo del CTA.
-    const pick = [3, 9, 15, 90, 100, 140, 160, 175];
-    const run = async () => {
-      const hs = [];
-      await renderHtmlLayers({ scene: s, fonts, chromium, encode: false, frames: 176,
-        onFrame: (i, png) => { if (pick.includes(i)) hs.push(png.toString('base64').length + ':' + require_hash(png)); } });
-      return hs;
-    };
-    const a = await run(), b = await run();
-    assert.equal(a.length, pick.length);
-    assert.deepEqual(a, b);
+    const a = await run('beginframe'), b = await run('beginframe');
+    assert.equal(a.mode, 'beginframe', `capturó en ${a.mode}: ${a.warnings.join(' | ')}`);
+    assert.equal(a.hs.length, pick.length);
+    assert.deepEqual(a.hs, b.hs);
   });
-} else console.log('  --  determinismo con navegador: se salta (sin Playwright o sin fuente local)');
+  caso('beginFrame y captureScreenshot dan el mismo píxel en cada fotograma (el respaldo no cambia el video)', async () => {
+    const a = await run('beginframe'), b = await run('screenshot');
+    assert.equal(b.mode, 'screenshot');
+    assert.deepEqual(a.hs, b.hs);
+  });
+} else console.log('  --  determinismo con navegador: se salta (sin chrome-headless-shell o sin fuente local)');
 
 import { createHash } from 'node:crypto';
 function require_hash(buf) { return createHash('sha256').update(buf).digest('hex'); }
