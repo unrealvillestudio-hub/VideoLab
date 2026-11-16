@@ -197,6 +197,16 @@ await caso('text_layers: 202 por el mismo camino (fila en lab_jobs y ejecución 
   assert.match(ll[2].url, /videolab-render:run$/);
 });
 
+await caso('un parentJobId que no es de lab_jobs (FK 23503) es un 400 de entrada, no una caída del proveedor', () => {
+  const fk = '{"code":"23503","details":"Key (parent_job_id)=(00000000-0000-4000-8000-000000000001) is not present in table \\"lab_jobs\\"."}';
+  const e = C.insertFailure(409, fk);
+  assert.equal(e.label, 'VIDEOLAB_BAD_REQUEST');
+  assert.equal(e.status, 400);
+  const otro = C.insertFailure(500, 'boom');
+  assert.equal(otro.label, 'VIDEOLAB_PROVIDER_FAILED');
+  assert.equal(otro.status, 502);
+});
+
 await caso('marca N+1: la entrada no nombra ninguna marca ni persona', () => {
   const INSTANCIAS = ['NeuroneSCF', 'ForumPHs', 'UnrealvilleStudio', 'LucienSael', 'D7Herbal', 'Patricia', 'Irja', 'Ivette', 'Lucien', 'NSCF', 'FPHS', 'D7H'];
   for (const f of ['api/execute.js', 'api/_lib/execute_core.mjs']) {

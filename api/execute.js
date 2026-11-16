@@ -4,7 +4,7 @@
 // la cuenta de servicio de VIDEOLAB_RUNNER_KEY. Responde 202 sin esperar el render; el carril sondea `lab_jobs`.
 // Variables: VIDEOLAB_RUNNER_KEY, SUPABASE_SERVICE_ROLE_KEY, y SUPABASE_URL (o VITE_SUPABASE_URL).
 
-import { validateRequest, buildJobRow, runRequest, parseServiceAccount, signedAssertion, ExecuteError } from './_lib/execute_core.mjs';
+import { validateRequest, buildJobRow, runRequest, parseServiceAccount, signedAssertion, insertFailure, ExecuteError } from './_lib/execute_core.mjs';
 
 export const config = { maxDuration: 30 };
 
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     const ins = await fetch(`${sb.url}/rest/v1/lab_jobs?select=id`, {
       method: 'POST', headers: { ...sb.headers, Prefer: 'return=representation' }, body: JSON.stringify(buildJobRow(request)),
     });
-    if (!ins.ok) throw new ExecuteError('VIDEOLAB_PROVIDER_FAILED', `lab_jobs ${ins.status} ${(await ins.text()).slice(0, 200)}`, 502);
+    if (!ins.ok) throw insertFailure(ins.status, await ins.text());
     jobId = (await ins.json())[0].id;
 
     const run = runRequest(key.project_id, jobId);

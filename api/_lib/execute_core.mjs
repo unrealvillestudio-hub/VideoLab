@@ -118,6 +118,19 @@ export function buildJobRow(req) {
   };
 }
 
+/**
+ * Traduce el rechazo del INSERT en `lab_jobs`. Un `parentJobId` que no es un job de `lab_jobs` viola la FK
+ * `lab_jobs_parent_job_id_fkey` (Postgres 23503): es un pedido mal formado (400, etiqueta de entrada), no una caída del
+ * proveedor. Pasó el 2026-11-16: el Orchestrator mandaba el id de su propio job, que vive en otra tabla. PURO.
+ */
+export function insertFailure(status, text) {
+  const t = String(text ?? '');
+  if (/23503/.test(t) && /parent_job_id/.test(t)) {
+    return new ExecuteError('VIDEOLAB_BAD_REQUEST', 'parentJobId no es un job de lab_jobs: debe ser el job del lab que produjo el video (o no mandarse)', 400);
+  }
+  return new ExecuteError('VIDEOLAB_PROVIDER_FAILED', `lab_jobs ${status} ${t.slice(0, 200)}`, 502);
+}
+
 /** URL y cuerpo de la API de Cloud Run v2 que lanza una ejecución con JOB_ID. PURO. */
 export function runRequest(projectId, jobId) {
   return {
