@@ -325,5 +325,27 @@ if (hayLibass && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
   } finally { globalThis.fetch = fetchOriginal; }
 } else console.log('  --  sin ffmpeg con libass: se salta el render real');
 
+// Peor caso del carril (2026-11-16): un gancho de 12 palabras —el tope de CopyLab— no entraba en el tamaño mínimo
+// de hook_punch_settle y el render se cayó con VIDEOLAB_TEXT_DOES_NOT_FIT. Cada preset de la siembra tiene que
+// aguantar el texto más largo que el carril produce, medido con la métrica conservadora (la que se usa si la fuente
+// de la marca no se puede leer) y en la zona segura más estrecha de las pruebas.
+const PEOR_CASO = {
+  hook: ['Ni la junta directiva puede tocar ese dinero sin el voto mayoritario',
+    'El penthouse paga quinientos dólares y usted cien: eso podría cambiar pronto'],
+  key_title: ['Su cuota podría duplicarse sin que su apartamento cambie en nada'],
+  cta: ['Está pensando en reenviarlo al presidente de su junta directiva. Tiene razón. Compártalo con él.'],
+};
+caso('siembra: cada preset de gancho, título clave y CTA aguanta el texto más largo del carril', () => {
+  const safe = T.safeRect(SAFE, CANVAS);
+  for (const p of PRESETS.filter((r) => PEOR_CASO[r.layer])) {
+    const spec = typeof p.spec === 'string' ? JSON.parse(p.spec) : p.spec;
+    for (const text of PEOR_CASO[p.layer]) {
+      assert.doesNotThrow(() => T.measureBlock({ text, spec, layer: p.layer, canvas: CANVAS,
+        maxW: safe.w * (spec.max_width_pct ?? 100) / 100, measure: T.estimateMeasure, family: 'x' }),
+      `${p.preset_key} no aguanta «${text}»`);
+    }
+  }
+});
+
 if (fallos) { console.error(`\n${fallos} caso(s) en rojo`); process.exit(1); }
 console.log('\ntextlayers: todo en verde');
