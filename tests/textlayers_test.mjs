@@ -334,14 +334,18 @@ const PEOR_CASO = {
     'El penthouse paga quinientos dólares y usted cien: eso podría cambiar pronto'],
   key_title: ['Su cuota podría duplicarse sin que su apartamento cambie en nada'],
   cta: ['Está pensando en reenviarlo al presidente de su junta directiva. Tiene razón. Compártalo con él.'],
+  // Un rol exacto con nombre, dos cargos y la marca (texto obligatorio de una ficha real: la torre se cayó con él).
+  role: ['Nombre Apellido — Facility Manager y Gerente de Operaciones — Marca'],
 };
-caso('siembra: cada preset de gancho, título clave y CTA aguanta el texto más largo del carril', () => {
+caso('siembra: cada preset de gancho, título clave, CTA y rol aguanta el texto más largo del carril', () => {
   const safe = T.safeRect(SAFE, CANVAS);
   for (const p of PRESETS.filter((r) => PEOR_CASO[r.layer])) {
-    const spec = typeof p.spec === 'string' ? JSON.parse(p.spec) : p.spec;
+    const raw = typeof p.spec === 'string' ? JSON.parse(p.spec) : p.spec;
+    // El rol se mide como lo mide buildTextLayers: con `split_on` admite 4 líneas y si no, 2 por defecto.
+    const spec = p.layer === 'role' ? { max_lines: raw.split_on ? 4 : 2, ...raw } : raw;
     for (const text of PEOR_CASO[p.layer]) {
       assert.doesNotThrow(() => T.measureBlock({ text, spec, layer: p.layer, canvas: CANVAS,
-        maxW: safe.w * (spec.max_width_pct ?? 100) / 100, measure: T.estimateMeasure, family: 'x' }),
+        maxW: safe.w * (spec.max_width_pct ?? (p.layer === 'role' ? 80 : 100)) / 100, measure: T.estimateMeasure, family: 'x' }),
       `${p.preset_key} no aguanta «${text}»`);
     }
   }
