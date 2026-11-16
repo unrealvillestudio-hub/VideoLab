@@ -181,6 +181,30 @@ caso('escena: las palabras llevan sus tramos (cursiva, peso, color) y la franja 
   assert.deepEqual(sc.filters, []);
 });
 
+caso('posición por tramo de toma: sin sitio para todo el tramo pero sí en cada plano, el bloque cambia de sitio en el corte', () => {
+  // Plano A (0–1000 ms): una cara tapa la mitad de arriba de la zona segura; plano B (1000–2000 ms), la de abajo.
+  // Ningún sitio sirve para todo el tramo; en cada plano, sí.
+  const faces = [{ box: { x: 0, y: 14, w: 100, h: 26 }, start_ms: 0, end_ms: 1000 }, { box: { x: 0, y: 40, w: 100, h: 23 }, start_ms: 1000, end_ms: 2000 }];
+  const tl = { key_titles: [{ text: 'Una frase clave', at_ms: 500, dur_ms: 1000, preset_key: 'key_title_rule' }] };
+  const r = T.buildTextLayers(args({ textLayers: tl, timeline: { faces }, durationMs: 2000 }));
+  const k = r.blocks.find((b) => b.layer === 'key_title');
+  assert.equal(k.segments?.length, 2, JSON.stringify(k) + r.warnings.join(' | '));
+  assert.deepEqual(k.segments.map((g) => [g.start_ms, g.end_ms]), [[500, 1000], [1000, 1500]]);
+  const facePx = T.facesPx({ faces }, CANVAS);
+  const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  assert.ok(!hit(k.segments[0].rect, facePx[0]) && !hit(k.segments[1].rect, facePx[1]), 'cada tramo libra la cara de su plano');
+  assert.deepEqual(k.rect, k.segments[0].rect);
+  assert.ok(!r.warnings.some((w) => w.startsWith('TEXT_OVER_FACE')), r.warnings.join(' | '));
+  // ASS: un evento de texto por tramo; la entrada sólo en el primero.
+  const ev = r.ass.split('\n').filter((l) => l.startsWith('Dialogue: 2') && l.includes('frase'));
+  assert.equal(ev.length, 2);
+  assert.ok(ev[0].includes('\\fad(350,0)') && ev[1].includes('\\fad(0,250)'), ev.join('\n'));
+  // Escena: el mismo bloque con sus tramos; el runtime lo cambia de sitio en el corte.
+  const sc = buildScene(args({ textLayers: tl, timeline: { faces }, durationMs: 2000 }));
+  const b = sc.blocks[0];
+  assert.deepEqual(b.segments, k.segments);
+});
+
 // ── El job con el motor HTML (y su respaldo), con Supabase, Storage y fuentes dobles ──────────────────────────────────
 const DEJAVU = '/usr/share/fonts/truetype/dejavu';
 const hayLibass = spawnSync('ffmpeg', ['-hide_banner', '-filters'], { encoding: 'utf8' }).stdout?.includes(' subtitles ');

@@ -743,7 +743,20 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
 
   /** Dibuja un bloque ya colocado: caja, filete y texto. */
   const drawn = [];
-  const draw = ({ layer, key, spec, m, rect, t, textHex, emphasisHex, words, styleName, fam, align, placed = 'auto' }) => {
+  const draw = (a) => {
+    const { layer, key, spec, m, rect, t, textHex, emphasisHex, words, fam, align, placed = 'auto', segments = null } = a;
+    // Posición por tramo de toma (v1.4.0): un evento por tramo; la entrada sólo en el primero y la salida sólo en el
+    // último, para que el bloque no vuelva a entrar en cada corte.
+    if (segments && segments.length > 1) {
+      segments.forEach((g, k) => drawEvents({ ...a, rect: g.rect, t: { start_ms: g.start_ms, end_ms: g.end_ms },
+        spec: { ...spec, ...(k > 0 ? { entry: 'fade', duration_ms: 0 } : {}), ...(k < segments.length - 1 ? { exit_ms: 0 } : {}) } }));
+    } else drawEvents(a);
+    const rr = (r) => ({ x: R(r.x), y: R(r.y), w: R(r.w), h: R(r.h) });
+    blocks.push({ layer, preset_key: key, rect: rr(rect), start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed, align,
+      ...(segments && segments.length > 1 ? { segments: segments.map((g) => ({ start_ms: g.start_ms, end_ms: g.end_ms, rect: rr(g.rect) })) } : {}) });
+    drawn.push({ layer, preset_key: key, spec, m, rect, t, textHex, emphasisHex, words, family: fam, align, placed });
+  };
+  const drawEvents = ({ spec, m, rect, t, textHex, emphasisHex, words, styleName, align }) => {
     const dur = t.end_ms - t.start_ms;
     const ruleOff = m.rule && m.rule.position === 'above' ? m.rule.th + m.rule.gap : 0;
     const content = { x: rect.x, y: rect.y + ruleOff, w: rect.w, h: rect.h - (m.rule ? m.rule.th + m.rule.gap : 0) };
@@ -776,8 +789,6 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const mv = motion(spec, { kind: 'text', x: tx, y: ty, rect, canvas, durMs: dur });
     const body = blockText(m, spec, { words, baseColor: assColor(textHex), emphasisColor: assColor(emphasisHex), durMs: dur, baseBold: m.bold });
     events.push(`Dialogue: 2,${ts(t.start_ms)},${ts(t.end_ms)},${styleName},,0,0,0,,{\\an${align === 'center' ? 8 : align === 'right' ? 9 : 7}${mv.tags}${mv.clipped ? '' : clipSafe}}${body}`);
-    blocks.push({ layer, preset_key: key, rect: { x: R(rect.x), y: R(rect.y), w: R(rect.w), h: R(rect.h) }, start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed, align });
-    drawn.push({ layer, preset_key: key, spec, m, rect, t, textHex, emphasisHex, words, family: fam, align, placed });
   };
 
   // 1 · Banda de subtítulos (fija abajo de la zona segura): el resto se coloca respecto de ella.
@@ -824,9 +835,10 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   const faces = facesPx(timeline, canvas);
   const warnings = [];
   // Un lugar libre en vertical a partir de `rect`, o null. PURO respecto de lo ya colocado.
+  const rectsIn = (b, t) => (b.segments ? b.segments.filter((g) => overlapT(g, t)).map((g) => g.rect) : [b.rect]);
   const freeSpot = (rect, t) => {
     const busy = [...faces.filter((f) => f.start_ms < t.end_ms && t.start_ms < f.end_ms),
-      ...blocks.filter((b) => b.layer !== 'caption_band' && overlapT(b, t)).map((b) => b.rect)];
+      ...blocks.filter((b) => b.layer !== 'caption_band' && overlapT(b, t)).flatMap((b) => rectsIn(b, t))];
     if (!busy.some((f) => inter(rect, f))) return rect;
     const step = Math.max(1, Math.round(H * 0.005));
     for (let d = step; d <= H; d += step) {
@@ -857,6 +869,33 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
       if (!first) first = { m, rect: r0 };
       const r = freeSpot(r0, t);
       if (r) return { m, rect: r, placed: 'auto' };
+    }
+    // F1 (v1.4.0) — POSICIÓN POR TRAMO DE TOMA. Si el bloque cruza un cambio de plano (las caras cambian dentro de su
+    // tramo), puede que no haya un sitio libre para TODO el tramo pero sí uno en cada plano. Se parte el tramo en los
+    // cambios de caras y, al tamaño de partida, se busca sitio en cada sub-tramo. El bloque salta de sitio justo en el
+    // corte, donde el salto no se ve. Sólo si todos los sub-tramos tienen sitio; si no, el ancla con aviso, como antes.
+    const cuts = [...new Set(faces.flatMap((f) => [f.start_ms, f.end_ms]).filter((x) => x > t.start_ms && x < t.end_ms))].sort((a, b) => a - b);
+    if (cuts.length) {
+      const edges = [t.start_ms, ...cuts, t.end_ms];
+      // Mismo tamaño en todos los tramos: del de partida al mínimo, el primero que tiene sitio en TODOS.
+      for (const v of sizes) {
+        let m, r0;
+        try {
+          m = measureBlock({ text, spec: { ...spec, size_pct: v }, layer, canvas, maxW, measure, family: fam });
+          r0 = place(m, spec, label, align, anchorDefault);
+        } catch { continue; }
+        const segments = [];
+        for (let k = 0; k + 1 < edges.length; k++) {
+          const sub = { start_ms: edges[k], end_ms: edges[k + 1] };
+          const r = freeSpot(r0, sub);
+          if (!r) { segments.length = 0; break; }
+          const prevSeg = segments[segments.length - 1];
+          if (prevSeg && prevSeg.rect.x === r.x && prevSeg.rect.y === r.y) prevSeg.end_ms = sub.end_ms;   // mismo sitio: se une
+          else segments.push({ ...sub, rect: r });
+        }
+        if (segments.length > 1) return { m, rect: segments[0].rect, segments, placed: 'auto' };
+        if (segments.length === 1) return { m, rect: segments[0].rect, placed: 'auto' };
+      }
     }
     warnings.push(`TEXT_OVER_FACE: ${label} no tiene lugar libre de caras ni de otro texto en la zona segura, ni al tamaño mínimo; queda en el ancla de su preset`);
     return { ...first, placed: 'auto' };
@@ -915,9 +954,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
     const hookArgs = { text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed } = tl.hook.place ? placeManual({ ...hookArgs, place: tl.hook.place }) : fitFree(hookArgs);
+    const { m, rect, placed, segments } = tl.hook.place ? placeManual({ ...hookArgs, place: tl.hook.place }) : fitFree(hookArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, segments, t: tH, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
@@ -931,9 +970,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
     const kArgs = { text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed } = k.place ? placeManual({ ...kArgs, place: k.place }) : fitFree(kArgs);
+    const { m, rect, placed, segments } = k.place ? placeManual({ ...kArgs, place: k.place }) : fitFree(kArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, segments, t: tK, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
@@ -946,9 +985,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
     const cArgs = { text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed } = tl.cta.place ? placeManual({ ...cArgs, place: tl.cta.place }) : fitFree(cArgs);
+    const { m, rect, placed, segments } = tl.cta.place ? placeManual({ ...cArgs, place: tl.cta.place }) : fitFree(cArgs);
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, segments, t: tC, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
@@ -1026,12 +1065,14 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   }
 
   // 6 · Comprobaciones duras: todo dentro de la zona segura; nada se pisa en el mismo tiempo.
-  for (const b of blocks) if (!inside(b.rect, safe)) nofit(`${b.layer} (${b.preset_key}) sale de la zona segura`);
+  // Con posición por tramo, cada tramo cuenta por separado (su sitio y su tiempo).
+  const pieces = (b) => (b.segments ? b.segments : [b]);
+  for (const b of blocks) for (const p of pieces(b)) if (!inside(p.rect, safe)) nofit(`${b.layer} (${b.preset_key}) sale de la zona segura`);
   for (let i = 0; i < blocks.length; i++) {
     for (let j = i + 1; j < blocks.length; j++) {
       // Dos bloques automáticos nunca se pisan; si uno lo colocó el operador, ya se avisó (TEXT_PLACED_OVERLAP).
       if (blocks[i].placed === 'manual' || blocks[j].placed === 'manual') continue;
-      if (overlapT(blocks[i], blocks[j]) && inter(blocks[i].rect, blocks[j].rect)) {
+      if (pieces(blocks[i]).some((p) => pieces(blocks[j]).some((q) => overlapT(p, q) && inter(p.rect, q.rect)))) {
         nofit(`${blocks[i].layer} (${blocks[i].preset_key}) y ${blocks[j].layer} (${blocks[j].preset_key}) se pisan entre ${Math.max(blocks[i].start_ms, blocks[j].start_ms)} y ${Math.min(blocks[i].end_ms, blocks[j].end_ms)} ms`);
       }
     }
