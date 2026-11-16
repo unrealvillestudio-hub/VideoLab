@@ -1,7 +1,7 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.2.0",
-  "date": "2026-11-07",
+  "version": "1.3.0",
+  "date": "2026-11-16",
   "lab": "videolab",
   "transport": {
     "endpoint_source": "public.lab_configs.api_endpoint + execute_path (fila lab_key='videolab')",
@@ -39,7 +39,9 @@
         "person_blueprint_id",
         "avatar_engine",
         "duration_target_ms",
-        "canvas"
+        "canvas",
+        "mode",
+        "safe_zone_canal"
       ]
     },
     "previousOutputs": {
@@ -52,7 +54,8 @@
         "images",
         "voice",
         "music",
-        "video_prompt"
+        "video_prompt",
+        "text_layers"
       ]
     }
   },
@@ -136,5 +139,68 @@
       "Con technique_id, los cortes siguen cut_plan.sequence (roles speaker | listener | wide, con framing preferido) y moves.speaker mueve la cámara de quien habla."
     ],
     "output": "output_parsed.conversation = { location_blueprint_id, technique_id, segments: [{ turn, seat, shot_id, mode, start_ms, ms, engine }] }"
+  },
+  "text_layers": {
+    "mode": "params.mode = 'text_layers' — sólo texto sobre previousOutputs.base_video; no llama a HeyGen, Veo ni ImageLab",
+    "request": {
+      "required": [
+        "brandId",
+        "pieceId",
+        "params",
+        "previousOutputs"
+      ],
+      "params": {
+        "required": [
+          "mode",
+          "platform",
+          "format"
+        ],
+        "optional": [
+          "safe_zone_canal",
+          "canvas"
+        ]
+      },
+      "previousOutputs": {
+        "required": [
+          "base_video",
+          "text_layers"
+        ],
+        "optional": [
+          "timeline"
+        ]
+      }
+    },
+    "layers": [
+      "hook",
+      "role",
+      "caption",
+      "key_title",
+      "cta"
+    ],
+    "entries": [
+      "fade",
+      "pop",
+      "pop_words",
+      "mask",
+      "type",
+      "punch",
+      "slide",
+      "rise",
+      "draw"
+    ],
+    "color_slots": [
+      "text",
+      "text_body",
+      "accent",
+      "scrim",
+      "rule",
+      "identity"
+    ],
+    "presets_table": "public.videolab_text_presets (brand_id NULL = sistema; la fila de la marca manda)",
+    "seed": "docs/text_presets_seed.json",
+    "role_max_entry_ms": 350,
+    "role_caption_margin_pct": 2,
+    "output": "{ mode, video, clean_video: { url }, text_layers, text_layout: { canal, metrics, blocks }, provider, model_id, cost_usd, ledger_ids }",
+    "conversation_output": "clean_video: { url, storage_path }, timeline: { words: [{ text, start_ms, end_ms, person_id }], turns: [{ turn, seat, person_id, start_ms, end_ms }], turns_without_words }, text_layers, text_layout"
   }
 }

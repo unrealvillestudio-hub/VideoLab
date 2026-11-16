@@ -10,6 +10,9 @@
 // fila ya está en marcha cuando se responde.
 
 import { createSign } from 'node:crypto';
+// La forma de las capas de texto vive en un solo sitio, el módulo del render (contrato v1.3.0, §4 ter): la entrada y el
+// job validan con la misma función.
+import { validateTextLayers, timelineWords } from '../../render/src/textlayers.mjs';
 
 export const RUN_REGION = 'us-central1';
 export const RUN_JOB = 'videolab-render';
@@ -28,9 +31,41 @@ const bad = (m) => { throw new ExecuteError('VIDEOLAB_BAD_REQUEST', m); };
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
 const obj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 
+/** La validación de las capas de texto, con la etiqueta de la entrada. */
+function textLayersOk(tl, opts) {
+  try { validateTextLayers(tl, opts); } catch (e) { bad(String(e?.message ?? e)); }
+}
+
+/**
+ * Modo `text_layers` (contrato v1.3.0, §4 ter.1): sólo texto sobre el video limpio de la pieza. `parentJobId` es
+ * opcional (lo pide el Orchestrator desde la pieza, sin job del carril). PURO.
+ */
+function validateTextLayersRequest(body) {
+  for (const k of ['brandId', 'pieceId']) if (!str(body[k])) bad(`falta ${k}`);
+  if (!UUID.test(body.pieceId)) bad('pieceId debe ser un UUID');
+  if (body.parentJobId != null && !UUID.test(String(body.parentJobId))) bad('parentJobId debe ser un UUID');
+  const p = body.params, prev = body.previousOutputs;
+  if (!obj(p)) bad('falta params');
+  if (!obj(prev)) bad('falta previousOutputs');
+  if (!str(p.platform)) bad('falta params.platform');
+  if (p.format !== 'reel') bad("params.format debe ser 'reel'");
+  if (p.safe_zone_canal != null && !str(p.safe_zone_canal)) bad('params.safe_zone_canal debe ser un texto');
+  if (p.canvas != null && !(obj(p.canvas) && Number(p.canvas.width) > 0 && Number(p.canvas.height) > 0)) bad('params.canvas debe traer width y height');
+  if (!str(prev.base_video?.url)) bad('falta previousOutputs.base_video.url (el video limpio de la pieza)');
+  if (prev.timeline != null && !obj(prev.timeline)) bad('previousOutputs.timeline debe ser un objeto');
+  let words;
+  try { words = timelineWords(prev.timeline); } catch (e) { bad(String(e?.message ?? e)); }
+  textLayersOk(prev.text_layers, { words });
+  return body;
+}
+
 /** Comprueba la forma del pedido (contrato §2). Devuelve el pedido normalizado o lanza VIDEOLAB_BAD_REQUEST. PURO. */
 export function validateRequest(body) {
   if (!obj(body)) bad('el cuerpo debe ser un objeto JSON');
+  if (obj(body.params) && body.params.mode != null) {
+    if (body.params.mode === 'text_layers') return validateTextLayersRequest(body);
+    bad(`params.mode desconocido: ${body.params.mode}`);
+  }
   for (const k of ['brandId', 'pieceId', 'parentJobId']) if (!str(body[k])) bad(`falta ${k}`);
   // pieceId y parentJobId son UUID: el libro de costos (ops_log_generation.p_piece_id) y lab_jobs.parent_job_id
   // los tipan así. Un texto pasaría hasta el final del render y fallaría al asentar el costo, ya gastado.
@@ -64,6 +99,8 @@ export function validateRequest(body) {
       const hasCuts = Array.isArray(t.cuts) && t.cuts.length > 0;
       if (!hasCuts && !str(p.technique_id)) bad(`turns[${i}] necesita cuts o params.technique_id`);
     });
+    // Capas de texto editables sobre el render final (v1.3.0). Las palabras las arma el job desde las voces.
+    if (prev.text_layers != null) textLayersOk(prev.text_layers);
     return body;
   }
   const hasImage = str(prev.image?.url) || (Array.isArray(prev.images) && prev.images.some((x) => str(x?.url)));
@@ -76,7 +113,7 @@ export function validateRequest(body) {
 export function buildJobRow(req) {
   return {
     lab: 'videolab', job_type: 'videolab', status: INITIAL_STATUS,
-    brand_id: req.brandId, parent_job_id: req.parentJobId, payload: req,
+    brand_id: req.brandId, parent_job_id: req.parentJobId ?? null, payload: req,
     dry_run: false, created_by: 'videolab-api',
   };
 }
