@@ -611,7 +611,8 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   // (`warnings`): nunca se descarta texto en silencio.
   const faces = facesPx(timeline, canvas);
   const warnings = [];
-  const dodge = (rect, t, label) => {
+  // Un lugar libre en vertical a partir de `rect`, o null. PURO respecto de lo ya colocado.
+  const freeSpot = (rect, t) => {
     const busy = [...faces.filter((f) => f.start_ms < t.end_ms && t.start_ms < f.end_ms),
       ...blocks.filter((b) => b.layer !== 'caption_band' && overlapT(b, t)).map((b) => b.rect)];
     if (!busy.some((f) => inter(rect, f))) return rect;
@@ -623,8 +624,30 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
         if (!busy.some((f) => inter(c, f))) return c;
       }
     }
-    warnings.push(`TEXT_OVER_FACE: ${label} no tiene lugar libre de caras en la zona segura; queda en el ancla de su preset`);
-    return rect;
+    return null;
+  };
+  // 2026-11-16 (2) — ANTES DE CEDER, MÁS PEQUEÑO. En un primer plano vertical la cara ocupa el centro y un gancho a su
+  // tamaño de partida no cabe ni arriba ni abajo (medido: re-render de la prueba del set de conversación). Se prueba el
+  // bloque de su tamaño de partida hacia el mínimo del preset, de 0,4 en 0,4; el primero que tiene lugar libre se queda.
+  // Si ninguno, el de tamaño de partida en su ancla, con aviso.
+  const fitFree = ({ text, spec, layer, label, align, anchorDefault, t, maxW, fam }) => {
+    const from = num(spec.size_pct, 4), to = Math.min(from, num(spec.min_size_pct, from));
+    const sizes = [];
+    for (let v = from; v > to + 1e-9; v = Math.round((v - 0.4) * 100) / 100) sizes.push(v);
+    sizes.push(to);
+    let first = null;
+    for (const v of sizes) {
+      let m, r0;
+      try {
+        m = measureBlock({ text, spec: { ...spec, size_pct: v }, layer, canvas, maxW, measure, family: fam });
+        r0 = place(m, spec, label, align, anchorDefault);
+      } catch (e) { if (v === sizes[sizes.length - 1] && !first) throw e; continue; }
+      if (!first) first = { m, rect: r0 };
+      const r = freeSpot(r0, t);
+      if (r) return { m, rect: r };
+    }
+    warnings.push(`TEXT_OVER_FACE: ${label} no tiene lugar libre de caras ni de otro texto en la zona segura, ni al tamaño mínimo; queda en el ancla de su preset`);
+    return first;
   };
 
   // 2 · Gancho.
@@ -632,9 +655,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const row = resolveTextPreset(presets, tl.hook.preset_key, brandId, 'hook');
     const spec = row.spec, fam = family(spec, 'hook');
     const align = spec.align === 'left' ? 'left' : 'center';
-    const m = measureBlock({ text: tl.hook.text, spec, layer: 'hook', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
     const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
-    const rect = dodge(place(m, spec, 'hook', align, 'top'), tH, 'hook');
+    const { m, rect } = fitFree({ text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
     const textHex = color(spec.color ?? 'text');
     draw({ layer: 'hook', key: row.preset_key, spec, m, rect, t: tH, textHex,
       emphasis: tl.hook.emphasis ?? [], styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
@@ -645,9 +668,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const row = resolveTextPreset(presets, k.preset_key, brandId, 'key_title');
     const spec = row.spec, fam = family(spec, 'key_title');
     const align = spec.align === 'left' ? 'left' : 'center';
-    const m = measureBlock({ text: k.text, spec, layer: 'key_title', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
     const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
-    const rect = dodge(place(m, spec, `key_titles[${i}]`, align, 'center'), tK, `key_titles[${i}]`);
+    const { m, rect } = fitFree({ text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
     const textHex = color(spec.color ?? 'text');
     draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, t: tK, textHex,
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
@@ -656,10 +679,10 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const row = resolveTextPreset(presets, tl.cta.preset_key, brandId, 'cta');
     const spec = row.spec, fam = family(spec, 'cta');
     const align = spec.align === 'left' ? 'left' : 'center';
-    const m = measureBlock({ text: tl.cta.text, spec, layer: 'cta', canvas, maxW: safe.w * num(spec.max_width_pct, 100) / 100, measure, family: fam });
     const at = Number(tl.cta.at_ms);
     const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
-    const rect = dodge(place(m, spec, 'cta', align, 'above_captions'), tC, 'cta');
+    const { m, rect } = fitFree({ text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
+      maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam });
     const textHex = color(spec.color ?? 'text');
     draw({ layer: 'cta', key: row.preset_key, spec, m, rect, t: tC, textHex,
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
@@ -683,7 +706,12 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
       const cand = { x: safe.x, y, w: m.w, h: m.h };
       if (!busy.some((f) => inter(cand, f))) { rect = cand; break; }
     }
-    if (!rect) nofit(`roles[${i}]: no hay lugar en la zona segura que no tape una cara ni otro texto`);
+    // 2026-11-16 (2) — misma política que las demás capas: sin lugar libre, el rol queda sobre los subtítulos y se avisa.
+    // Antes tumbaba el render entero (lab_jobs c5a1211c): un rol no vale un video caído.
+    if (!rect) {
+      warnings.push(`TEXT_OVER_FACE: roles[${i}] no tiene lugar libre de caras ni de otro texto; queda sobre los subtítulos`);
+      rect = { x: safe.x, y: floorY - m.h, w: m.w, h: m.h };
+    }
     const textHex = color(spec.color ?? 'text_body');
     draw({ layer: 'role', key: row.preset_key, spec, m, rect, t, textHex, styleName: styleFor(`R_${row.preset_key}`, fam, spec, m, textHex), fam, align: 'left' });
   }
