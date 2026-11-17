@@ -30,6 +30,9 @@
     },
     "api/text-scene.js": {
       "includeFiles": "render/src/**/*.mjs"
+    },
+    "api/text-styles.js": {
+      "includeFiles": "render/src/**/*.mjs"
     }
   }
 }
