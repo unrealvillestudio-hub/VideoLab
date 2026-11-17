@@ -1,5 +1,5 @@
 {
-  "_doc": "Estilos de texto del motor HTML, F4 (2026-11-17): TEXTO DETRÁS DE LAS PERSONAS. Encargo de Sam: «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos»; objetivo F1 confirmado («sí al objetivo F1, VideoLab, tope 35 %»). spec.depth = { mode: behind_subject, max_cover: 0.35 } (contrato v1.11.0): el bloque va detrás de la persona salvo que la persona tape más del 35 % del texto, y entonces va delante con aviso. Tres animaciones: detrás fijo (rise), sale desde detrás (emerge) y cruza por detrás (cross). Todos proposed: Sam los valida en el Orchestrator.",
+  "_doc": "Estilos de texto del motor HTML, F4 (2026-11-17): TEXTO DETRÁS DE LAS PERSONAS. Encargo de Sam: «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos»; objetivo F1 confirmado («sí al objetivo F1, VideoLab, tope 35 %»). spec.depth = { mode: behind_subject, max_cover: 0.35 } (contrato v1.11.0): el bloque va detrás de la persona salvo que la persona tape más del 35 % del texto, y entonces va delante con aviso. Tres animaciones: detrás fijo (rise), sale desde detrás (emerge) y cruza por detrás (cross). Todos proposed: Sam los valida en el Orchestrator. Ajuste del 2026-11-17 (medido en el job real): con 2 líneas y tamaño mínimo 6 %, un gancho de 11 palabras no entraba y el job fallaba (VIDEOLAB_TEXT_DOES_NOT_FIT); ahora admiten lo mismo que el resto del catálogo de su capa (mínimo 2,8 % en gancho y 3,2 % en título clave, hasta 4 líneas).",
   "version": "f4",
   "date": "2026-11-17",
   "rows": [
@@ -32,9 +32,9 @@
           "mode": "behind_subject",
           "max_cover": 0.35
         },
-        "size_pct": 11,
-        "min_size_pct": 6,
-        "max_lines": 2,
+        "size_pct": 8,
+        "min_size_pct": 2.8,
+        "max_lines": 4,
         "anchor": "top",
         "motion": {
           "tracks": [
@@ -119,9 +119,9 @@
           "mode": "behind_subject",
           "max_cover": 0.35
         },
-        "size_pct": 11,
-        "min_size_pct": 6,
-        "max_lines": 2,
+        "size_pct": 8,
+        "min_size_pct": 2.8,
+        "max_lines": 4,
         "anchor": "top",
         "motion": {
           "tracks": [
@@ -206,9 +206,9 @@
           "mode": "behind_subject",
           "max_cover": 0.35
         },
-        "size_pct": 9,
-        "min_size_pct": 5.5,
-        "max_lines": 2,
+        "size_pct": 6.5,
+        "min_size_pct": 3.2,
+        "max_lines": 4,
         "anchor": "center",
         "motion": {
           "tracks": [
@@ -290,9 +290,9 @@
           "mode": "behind_subject",
           "max_cover": 0.35
         },
-        "size_pct": 9,
-        "min_size_pct": 5.5,
-        "max_lines": 2,
+        "size_pct": 6.5,
+        "min_size_pct": 3.2,
+        "max_lines": 4,
         "anchor": "center",
         "motion": {
           "tracks": [

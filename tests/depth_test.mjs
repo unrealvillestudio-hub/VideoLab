@@ -63,6 +63,26 @@ caso('catálogo F4: 4 estilos html, detrás con tope 35 %, movimiento válido, p
   }
 });
 
+// Barrera (2026-11-17, medido en el job real): con 2 líneas y mínimo 6 %, el gancho «Su cuota podría cambiar, y no por
+// nada que usted hizo» no entraba y el job fallaba con VIDEOLAB_TEXT_DOES_NOT_FIT. Un estilo detrás tiene que admitir
+// TODO texto que admita algún otro estilo de su capa: si no, la rotación o la ventana lo eligen y tumban la pieza.
+caso('catálogo F4: cada estilo detrás admite todo texto que admite algún otro estilo de su capa', () => {
+  const textos = ['Su cuota podría cambiar, y no por nada que usted hizo', 'Todas las unidades: $200', '$1.67 por metro cuadrado',
+    'Esto cambia todo', 'La cuota extraordinaria se vota el jueves en la asamblea de propietarios', 'Ahorro real: 1.250,50 al año'];
+  const SAFE = { top: 14, left: 6, right: 22, bottom: 37 };
+  const fits = (preset, layer, text) => {
+    const tl = layer === 'hook' ? { hook: { text, preset_key: preset, start_ms: 0, end_ms: 2000 } } : { key_titles: [{ text, at_ms: 0, dur_ms: 2000, preset_key: preset }] };
+    try { buildScene({ textLayers: tl, timeline: null, presets: PRESETS, brandId: 'marca_prueba', palette: PALETTE, typography: TYPO, tokens: TOKENS,
+      safeZone: SAFE, canvas: { width: W, height: H }, durationMs: 3000 }); return true; } catch { return false; }
+  };
+  for (const r of F4) {
+    const otros = PRESETS.filter((x) => x.layer === r.layer && !F4.includes(x) && x.spec?.engine === 'html');
+    for (const t of textos) {
+      if (otros.some((o) => fits(o.preset_key, r.layer, t))) assert.ok(fits(r.preset_key, r.layer, t), `${r.preset_key} no admite «${t}» y otro estilo de ${r.layer} sí`);
+    }
+  }
+});
+
 caso('escena: el bloque lleva su profundidad; los fotogramas a recortar son los del bloque', () => {
   const sc = scene({ ...HOOK(), key_titles: [{ text: 'Piso 32', at_ms: 1500, dur_ms: 1000, preset_key: 'key_title_zoom_words' }] });
   assert.deepEqual(sc.blocks.map((b) => !!b.depth), [true, false]);
