@@ -203,10 +203,11 @@ async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline,
     if (keys.length) {
       const [vl] = await S.select(cfg, `lab_configs?lab_key=eq.voicelab&select=api_endpoint`);
       if (!vl?.api_endpoint) throw new Error('lab_configs no tiene el api_endpoint de voicelab');
-      const res = await fetch(`${vl.api_endpoint.replace(/\/+$/, '')}/api/execute`, {
+      // El modo `sound` sólo lee la librería y no cuesta: se puede repetir ante un corte de red.
+      const res = await S.fetchNamed('VoiceLab sound', `${vl.api_endpoint.replace(/\/+$/, '')}/api/execute`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ brandId, stage: { mode: 'sound' }, params: { sounds: keys }, parent_job_id: jobId }),
-      });
+      }, { retry: true });
       const out = await res.json().catch(() => ({}));
       if (res.status === 422 && out.error_label === 'SOUND_NOT_FOUND') throw new RenderError('VIDEOLAB_BAD_REQUEST', `sonido pedido que la librería no tiene: ${String(out.error ?? '').slice(0, 160)}`);
       if (!res.ok || !Array.isArray(out.sounds)) throw new Error(`VoiceLab ${res.status} ${out.error_label ?? ''} ${String(out.error ?? '').slice(0, 160)}`);
