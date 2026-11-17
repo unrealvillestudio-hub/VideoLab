@@ -18,6 +18,46 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 
 ---
 
+## 0 ter. Medida del impacto por estilo — mapeada, en espera de datos (2026-11-17)
+
+**Decisión de Sam (2026-11-17):** «Lo de las métricas deberá esperar a tener data, todas las cuentas son muy nuevas y no
+la tienen, déjalo mapeado.» No se construye nada hasta que se cumpla la condición de abajo.
+
+**Estado de los 25 estilos html:** Sam los validó a juicio («todos los estilos sí» y «Sí a los estilos de 5 muestras
+run2»). Se siembran como `validated_by_judgment` (`unrlvl-iid-functions`, migración `20261117180500`). El paso a
+`validated_by_data`, o a `retired`, sólo lo puede dar esta medida.
+
+**Condición que la desbloquea** (las dos a la vez; *medido* 2026-11-17 que hoy no se cumple ninguna):
+1. `content.content_performance` tiene filas de piezas con video. Hoy tiene **0 filas**.
+2. Hay jobs de VideoLab completados con pieza y con `output_parsed->text_layout->presets`. Hoy hay **0**.
+
+**Comprobación** (sólo lectura):
+
+```sql
+select (select count(*) from content.content_performance) as filas_metricas,
+       (select count(*) from public.lab_jobs
+         where payload->>'pieceId' is not null and status = 'completed'
+           and output_parsed->'text_layout'->'presets' is not null) as jobs_con_estilos;
+```
+
+**Cómo se cruza el dato** (todas las columnas existen hoy, *medido* 2026-11-17):
+- **Estilo por pieza:** `public.lab_jobs.output_parsed->text_layout->presets` (por capa) y `payload->>pieceId`. Es la misma
+  fuente que usa la rotación (`api/text-styles.js`, `historyOf`).
+- **Publicación:** `public.scheduled_posts.piece_id` → `platform`, `platform_post_id`, `published_at`.
+- **Resultado:** `content.content_performance` (`piece_id`, `brand_id`, `platform`, `impressions`, `reach`, `engagements`,
+  `clicks`, `saves`, `shares`).
+
+**Qué falta en el dato, aparte de las filas:** la tabla no tiene **retención ni visionado** (tiempo visto, % de
+finalización), que es lo que mide si el texto en pantalla funciona en video. Quién lo llena: el colector de métricas de
+SignalLab (Fase 1, AGENDA `unrlvl-context`, *reportado*). Al desbloquearse, la primera tarea es pedir esas columnas a
+la sesión dueña de métricas, no deducirlas de los engagements.
+
+**Cómo se mide, cuando haya dato** (propuesta, a validar entonces con Sam):
+- comparar por capa y por marca, nunca entre marcas;
+- un estilo sólo se juzga con un mínimo de piezas publicadas por estilo, fijado entonces con el volumen real;
+- el resultado cambia `status` (dato), nunca el código: `validated_by_data` o `retired`. La rotación ya sólo sugiere
+  estilos activos y no retirados (`render/src/textrotation.mjs`).
+
 ## 0 bis. F2 — catálogo de 5 estilos por capa, subtítulos y dos defectos (2026-11-17)
 
 **Objetivo validado por Sam:** 5 estilos `html` por capa, rotados por el carril entre generaciones, más tope de lectura en
