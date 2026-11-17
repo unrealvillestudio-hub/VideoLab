@@ -363,6 +363,20 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
   });
 }
 
+caso('v1.7.0: captions.keywords con forma y límites; line_weights con negrita exige bold', () => {
+  const tl = (kw) => ({ captions: { enabled: true, preset_key: 'caption_karaoke_accent', keywords: kw } });
+  const words = WORDS;
+  assert.doesNotThrow(() => T.validateTextLayers(tl(['negocio', 'uno por ciento']), { words }));
+  bad(() => T.validateTextLayers(tl('negocio'), { words }), /captions\.keywords/);
+  bad(() => T.validateTextLayers(tl(Array(13).fill('x')), { words }), /captions\.keywords/);
+  bad(() => T.validateTextLayers(tl(['']), { words }), /captions\.keywords/);
+  const role = PRESETS.find((r) => r.layer === 'role');
+  const lw = (spec) => [{ ...role, preset_key: 'rol_lw', spec: { ...role.spec, ...spec } }];
+  assert.doesNotThrow(() => T.resolveTextPreset(lw({ bold: true, line_weights: [700, 400] }), 'rol_lw', BRAND, 'role'));
+  bad(() => T.resolveTextPreset(lw({ bold: false, line_weights: [700, 400] }), 'rol_lw', BRAND, 'role'), /bold: true/);
+  bad(() => T.resolveTextPreset(lw({ bold: true, line_weights: [1200] }), 'rol_lw', BRAND, 'role'), /line_weights/);
+});
+
 await Promise.all(pendientes);
 if (fallos) { console.error(`\n${fallos} caso(s) MAL`); process.exit(1); }
 console.log('\ntext_v14: todo en verde');
