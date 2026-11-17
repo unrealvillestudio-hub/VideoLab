@@ -100,14 +100,18 @@ async function drawTextLayers({ tlr, input, out, work }) {
       const fonts = tlr.fontFiles.filter((f) => tlr.scene.families.includes(f.family)).map((f) => ({ ...f, bytes: readFileSync(f.file) }));
       // Texto detrás de las personas (v1.11.0): primero el recorte de los fotogramas que lo necesitan. Si falla, los
       // bloques van delante y se avisa (lo decide el capturador, que además controla la legibilidad).
-      let masks = null, maskNote = null;
+      let masks = null, maskNote = null, segMs = 0;
       const need = depthFrames(tlr.scene);
       if (need.length) {
+        const ts = performance.now();
         try { masks = await segmentFrames({ input, frames: need, fps: tlr.scene.fps, browserPath: findHeadlessShell() }); }
         catch (e) { maskNote = String(e?.message ?? e).slice(0, 160); }
+        segMs = Math.round(performance.now() - ts);
       }
       const r = await renderHtmlLayers({ scene: tlr.scene, fonts, input, out, workDir: work, masks, maskNote });
-      return { engine: 'html', capture: r.mode, warnings: r.warnings, frames_sha256: r.digest, depth: r.depth };
+      // Tiempos del texto detrás (ms), para atribuir el costo en producción: recorte, captura de lo de detrás y captura total.
+      const depthMs = r.depthMs ? { segment: segMs, frames: need.length, ...r.depthMs } : null;
+      return { engine: 'html', capture: r.mode, warnings: r.warnings, frames_sha256: r.digest, depth: r.depth, depth_ms: depthMs };
     } catch (e) {
       warnings.push(`TEXT_ENGINE_FALLBACK: el motor HTML falló (${String(e?.message ?? e).slice(0, 200)}); se dibuja con ASS`);
     }
@@ -124,7 +128,7 @@ async function drawTextLayers({ tlr, input, out, work }) {
 function textLayout(tlr, drawn) {
   return { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: [...tlr.warnings, ...drawn.warnings],
     engine: drawn.engine, capture: drawn.capture, presets: tlr.presets, frames_sha256: drawn.frames_sha256 ?? null, host: HOST,
-    ...(drawn.depth ? { depth: drawn.depth } : {}) };
+    ...(drawn.depth ? { depth: drawn.depth, depth_ms: drawn.depth_ms ?? null } : {}) };
 }
 
 /** Sonoridad integrada y pico verdadero (ebur128) del audio de `path`. */

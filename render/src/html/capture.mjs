@@ -11,7 +11,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -53,19 +53,26 @@ export function pngOf(W, H, colorType, pixels) {
  * byte a byte aunque los fotogramas sean idénticos (medido en la F0: 4 frente a 2 CPU); con AVX-512 también (medido en
  * el job real de la F1). Así, el mismo pedido da el mismo archivo en cualquier máquina.
  */
-export function overlayArgs({ input, fps, filters = [], out, x264 = X264, regions = null }) {
+export function overlayArgs({ input, fps, filters = [], out, x264 = X264, behind = [], size = null }) {
   const post = [...filters, 'format=yuv420p'].join(',');
-  // Con zonas (texto detrás de las personas): la imagen mide 3W × H = [delante | detrás | máscara]. El texto de detrás
-  // pierde alfa donde está la persona (alfa × (255 − máscara), en enteros) y va ENTRE el video y el texto de delante.
-  // La máscara se toma del canal rojo tal cual (`extractplanes=r`): sin conversión de color que la comprima a 16–235.
-  const graph = regions
-    ? `[1:v]format=rgba,split=3[pa][pb][pc];[pa]crop=${regions.w}:${regions.h}:0:0[fr];` +
-      `[pb]crop=${regions.w}:${regions.h}:${regions.w}:0,split=2[bk][bk2];[bk]alphaextract[ba];` +
-      `[pc]crop=${regions.w}:${regions.h}:${2 * regions.w}:0,extractplanes=r,negate[inv];` +
-      `[ba][inv]blend=all_mode=multiply[na];[bk2][na]alphamerge[bm];` +
-      `[0:v][bm]overlay=0:0:format=auto:eof_action=pass[m0];[m0][fr]overlay=0:0:format=auto:eof_action=pass[m];[m]${post}[v]`
-    : `[1:v]format=rgba[o];[0:v][o]overlay=0:0:format=auto:eof_action=pass[m];[m]${post}[v]`;
-  return ['-y', '-loglevel', 'error', '-i', input, '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', 'pipe:0',
+  // Texto detrás de las personas: `behind` = [{ dir, start_s }], una secuencia por tramo con bloques detrás. Cada tramo trae
+  // el texto de detrás (b_%05d.png, RGBA) y la máscara de la persona (m_%05d.png, gris, blanco = persona), y entra en su
+  // segundo con -itsoffset. Su alfa se multiplica por (255 − máscara), en enteros, y va ENTRE el video y el texto de
+  // delante. Sin tramos, el grafo de siempre.
+  const extra = [];
+  let graph = '';
+  let cur = '[0:v]';
+  behind.forEach((sq, k) => {
+    const bi = 2 + 2 * k, mi = 3 + 2 * k;
+    extra.push('-itsoffset', String(sq.start_s), '-framerate', String(fps), '-i', join(sq.dir, 'b_%05d.png'),
+      '-itsoffset', String(sq.start_s), '-framerate', String(fps), '-i', join(sq.dir, 'm_%05d.png'));
+    graph += `[${bi}:v]format=rgba,split=2[b${k}][bb${k}];[b${k}]alphaextract[ba${k}];` +
+      `[${mi}:v]scale=${size.w}:${size.h}:flags=bicubic,format=gray,negate[inv${k}];[ba${k}][inv${k}]blend=all_mode=multiply[na${k}];` +
+      `[bb${k}][na${k}]alphamerge[bm${k}];${cur}[bm${k}]overlay=0:0:format=auto:eof_action=pass[c${k}];`;
+    cur = `[c${k}]`;
+  });
+  graph += `[1:v]format=rgba[o];${cur}[o]overlay=0:0:format=auto:eof_action=pass[m];[m]${post}[v]`;
+  return ['-y', '-loglevel', 'error', '-i', input, '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', 'pipe:0', ...extra,
     '-filter_complex', graph,
     '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', ...x264, '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k', '-movflags', '+faststart', out];
@@ -83,9 +90,8 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
   const t0 = performance.now();
   if (!browserPath) throw new RenderError('VIDEOLAB_PROVIDER_FAILED', 'no hay chrome-headless-shell (HEADLESS_SHELL o una instalación de Playwright)');
   const { width: W, height: H } = scene.canvas;
-  // Texto detrás de las personas: con algún bloque con `depth`, la página va en tres zonas (runtime.mjs).
+  // Texto detrás de las personas: con algún bloque con `depth`, ese texto va en su propia capa (runtime.mjs).
   const regions = scene.blocks.some((b) => b.depth);
-  const PW = regions ? 3 * W : W;
   const fps = scene.fps;
   const total = frames ?? Math.round((scene.durationMs / 1000) * fps);
   const spans = textSpans(scene);
@@ -101,7 +107,7 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
   let ff = null, ffDone = null, ffErr = '';
   let page = null;
   try {
-    const open = (m) => openPage({ browserPath, url: pathToFileURL(pageFile).href, width: PW, height: H, mode: m, fps });
+    const open = (m) => openPage({ browserPath, url: pathToFileURL(pageFile).href, width: W, height: H, mode: m, fps });
     try { page = await open(mode); } catch (e) {
       if (mode !== 'beginframe') throw e;
       warnings.push(`TEXT_CAPTURE_FALLBACK: beginFrame no disponible (${String(e.message).slice(0, 160)}); se captura con captureScreenshot (mismo píxel)`);
@@ -112,13 +118,21 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
     timings.open_ms = Math.round(performance.now() - t0);
 
     // Texto detrás: control de legibilidad ANTES de capturar. Sin máscaras (el recorte falló), todo va delante.
-    let depth = null;
+    let depth = null, behind = [];
+    const behindHashes = [];
     if (regions) {
+      await page.evaluate("window.__vl.layer('all')");
       depth = await depthGuard({ scene, page, masks, fps, W, H, warnings, note: maskNote });
+      // Primero, sólo la capa de detrás en sus tramos, con su máscara, a disco. Después, la de delante, como siempre.
+      await page.evaluate("window.__vl.layer('behind')");
+      const tb = performance.now();
+      behind = await captureBehind({ scene, page, masks, fps, total, dir, report: depth.report, hashes: behindHashes });
+      timings.behind_ms = Math.round(performance.now() - tb);
+      await page.evaluate("window.__vl.layer('front')");
     }
 
     if (encode) {
-      ff = spawn('ffmpeg', overlayArgs({ input, fps, filters: scene.filters, out, regions: regions ? { w: W, h: H } : null }), { stdio: ['pipe', 'ignore', 'pipe'] });
+      ff = spawn('ffmpeg', overlayArgs({ input, fps, filters: scene.filters, out, behind, size: { w: W, h: H } }), { stdio: ['pipe', 'ignore', 'pipe'] });
       ff.stderr.on('data', (d) => { ffErr += d; });
       ffDone = new Promise((res, rej) => ff.on('close', (c) => (c === 0 ? res() : rej(new Error(`ffmpeg ${c}: ${ffErr.slice(-800)}`)))));
     }
@@ -131,7 +145,7 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
     if (scene.strip) {
       await page.evaluate('window.__vl.seek(-1)');
       blank = await page.frame(true);
-    } else blank = blankPng(PW, H);
+    } else blank = blankPng(W, H);
     blankHash = createHash('sha256').update(blank).digest('hex');
     const tc = performance.now();
     for (let i = 0; i < total; i++) {
@@ -139,7 +153,6 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
       let png, h;
       if (inSpan(t)) {
         const tf = performance.now();
-        if (depth?.active) await setFrameMask(page, depth, i);
         await page.evaluate(`window.__vl.seek(${t})`);
         png = await page.frame(true);
         h = createHash('sha256').update(png).digest('hex');
@@ -155,8 +168,9 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
     if (ff) { ff.stdin.end(); await ffDone; }
     timings.encode_wait_ms = Math.round(performance.now() - te);
     timings.total_ms = Math.round(performance.now() - t0);
-    const digest = createHash('sha256').update(hashes.join('\n')).digest('hex');
-    return { frames: total, captured, mode: page.mode, warnings, timings, hashes, digest, fit, spans, frameMs, depth: depth?.report ?? null };
+    const digest = createHash('sha256').update([...hashes, ...behindHashes].join('\n')).digest('hex');
+    return { frames: total, captured, mode: page.mode, warnings, timings, hashes, digest, fit, spans, frameMs, depth: depth?.report ?? null,
+      depthMs: depth ? { capture_behind: timings.behind_ms ?? 0, capture_total: timings.total_ms } : null };
   } finally {
     if (ff && ff.exitCode == null) ff.kill('SIGKILL');
     if (page) await page.close();
@@ -225,20 +239,33 @@ async function depthGuard({ scene, page, masks, fps, W, H, warnings, note }) {
     } else active = true;
     report.push({ id: b.id, layer: b.layer, preset_key: b.preset_key, cover, max_cover: b.depth.max_cover, placed: behind ? 'behind' : 'front' });
   }
-  return { active, masks, current: null, report };
+  return { active, report };
 }
 
-/** Pone en la página la máscara del fotograma i (o ninguna) y espera a que esté en el DOM. */
-async function setFrameMask(page, depth, i) {
-  const m = depth.masks.get(i) ?? null;
-  const url = m ? m.url : null;
-  if (url === depth.current) return;
-  const n = i + 1;
-  await page.evaluate(`window.__vl.mask(${JSON.stringify(url)}, ${n})`);
-  for (let k = 0; k < 200; k++) {
-    if (page.mode === 'beginframe') await page.frame(false);
-    if (await page.evaluate('window.__vlMask') === n) { depth.current = url; return; }
-    if (page.mode !== 'beginframe') await new Promise((r) => setTimeout(r, 5));
+/**
+ * Captura la capa de detrás (sólo los bloques que quedaron detrás) en sus tramos y escribe, por tramo, el texto
+ * (b_%05d.png) y la máscara (m_%05d.png) en `dir/detras_k/`. Devuelve [{ dir, start_s }] para `overlayArgs`.
+ */
+async function captureBehind({ scene, page, masks, fps, total, dir, report, hashes }) {
+  const ids = new Set(report.filter((r) => r.placed === 'behind').map((r) => r.id));
+  const ranges = scene.blocks.filter((b) => ids.has(b.id))
+    .map((b) => [Math.ceil((b.start_ms * fps) / 1000), Math.min(total - 1, Math.floor(((b.end_ms - 1) * fps) / 1000))])
+    .filter(([a, b]) => b >= a).sort((x, y) => x[0] - y[0]);
+  const merged = [];
+  for (const r of ranges) { const last = merged[merged.length - 1]; if (last && r[0] <= last[1] + 1) last[1] = Math.max(last[1], r[1]); else merged.push([...r]); }
+  const out = [];
+  for (const [k, [f0, f1]] of merged.entries()) {
+    const d = join(dir, `detras_${k}`);
+    mkdirSync(d, { recursive: true });
+    for (let i = f0; i <= f1; i++) {
+      await page.evaluate(`window.__vl.seek(${(i * 1000) / fps})`);
+      const png = await page.frame(true);
+      const n = String(i - f0).padStart(5, '0');
+      writeFileSync(join(d, `b_${n}.png`), png);
+      writeFileSync(join(d, `m_${n}.png`), masks.get(i).png);
+      hashes.push(createHash('sha256').update(png).digest('hex'), createHash('sha256').update(masks.get(i).png).digest('hex'));
+    }
+    out.push({ dir: d, start_s: Math.round((f0 / fps) * 1e6) / 1e6 });
   }
-  throw new Error(`la máscara del fotograma ${i} no cargó`);
+  return out;
 }
