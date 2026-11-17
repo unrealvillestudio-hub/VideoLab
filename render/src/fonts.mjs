@@ -8,6 +8,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { RenderError } from './plan.mjs';
+import { fetchNamed } from './supa.mjs';
 
 export const REGULAR_WEIGHT = 400;
 export const BOLD_WEIGHT = 700;
@@ -58,7 +59,7 @@ export function pickFaces(faces, { family, bold = false, italic = false } = {}) 
 const fileName = (family, weight, ext) => `${family.replace(/[^A-Za-z0-9]+/g, '_')}-${weight}.${ext}`;
 
 async function download(face, family, weight, dir) {
-  const res = await fetch(face.url);
+  const res = await fetchNamed(`fuente ${family} ${weight}`, face.url, {}, { retry: true });
   if (!res.ok) throw new RenderError('VIDEOLAB_BAD_REQUEST', `fuente ${family} ${weight}: ${res.status}`);
   const file = join(dir, fileName(family, weight, face.ext));
   writeFileSync(file, Buffer.from(await res.arrayBuffer()));
@@ -71,7 +72,7 @@ async function download(face, family, weight, dir) {
  */
 export async function brandFontFaces({ cssImport, family, dir, bold = false, italic = false }) {
   if (!cssImport || !family) throw new RenderError('VIDEOLAB_BAD_REQUEST', 'la marca no declara tipografía para el texto en pantalla');
-  const css = await (await fetch(cssImport, { headers: { 'User-Agent': 'Mozilla/4.0 (videolab-render)' } })).text();
+  const css = await (await fetchNamed(`css de ${family}`, cssImport, { headers: { 'User-Agent': 'Mozilla/4.0 (videolab-render)' } }, { retry: true })).text();
   const faces = parseFontFaces(css);
   if (!faces.length) throw new RenderError('VIDEOLAB_BAD_REQUEST', `css_import de ${family} no ofrece TTF/OTF`);
   const pick = pickFaces(faces, { family, bold, italic });
