@@ -10,6 +10,16 @@
 // Este módulo da los argumentos de x264 que hacen el video reproducible: hilos fijos y el juego de instrucciones más
 // alto de esa lista que tenga la máquina. Nunca AVX-512. Cada codificación libx264 del render los lleva (lo comprueba
 // tests/x264_test.mjs).
+//
+// SEGUNDA CAUSA, sin mbtree (medido 2026-11-17, después de fijar el nivel). Con contenido real, el mismo pedido seguía
+// dando un MP4 en Intel y otro en AMD: los fotogramas capturados eran idénticos (misma `frames_sha256` en las 4
+// ejecuciones), y la decodificación y la composición también. En Cloud Run, 10 tareas codificaron los mismos 3 s del
+// video limpio real con variantes: sólo `mbtree=0` dio el mismo archivo en las 10 (5 AMD EPYC 7B13, 5 Intel Xeon de dos
+// modelos). Con mbtree, AMD da uno e Intel otro, incluso con `asm=ssse3` y con las rutinas matemáticas de glibc
+// restringidas. Por qué (deducido, no leído en el ensamblador): el árbol de macrobloques usa un recíproco aproximado
+// cuya precisión depende del fabricante del procesador. Costo medido en 20 s de la pieza real: +32 % de peso con la
+// misma calidad (SSIM 0,9905 → 0,9904; PSNR 36,03 → 35,99 dB) y el mismo tiempo. `asm=0` (C puro) también lo resuelve,
+// pero tarda 5 veces más.
 
 import { readFileSync } from 'node:fs';
 
@@ -31,10 +41,13 @@ export function hostCpuFlags() {
   } catch { return []; }
 }
 
+/** Opciones de x264 que dependen del fabricante del procesador y se apagan (ver la cabecera). */
+export const X264_OFF = Object.freeze(['mbtree=0']);
+
 /** Argumentos de ffmpeg que van justo después de `-c:v libx264`. PURO sobre las banderas. */
 export function x264Args(cpuFlags = hostCpuFlags()) {
   const asm = x264AsmFor(cpuFlags);
-  return ['-threads:v', String(X264_THREADS), ...(asm ? ['-x264-params', `asm=${asm}`] : [])];
+  return ['-threads:v', String(X264_THREADS), '-x264-params', [...(asm ? [`asm=${asm}`] : []), ...X264_OFF].join(':')];
 }
 
 /** Los de esta máquina, calculados una vez. */

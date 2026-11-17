@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { x264AsmFor, x264Args, hostCpuFlags, hostOf, HOST, X264_SAME_OUTPUT } from '../render/src/x264.mjs';
+import { x264AsmFor, x264Args, hostCpuFlags, hostOf, HOST, X264_SAME_OUTPUT, X264_OFF } from '../render/src/x264.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 let fallos = 0;
@@ -46,8 +46,13 @@ caso('nivel por máquina: con AVX-512 se usa AVX2 (nunca AVX-512); sin AVX2, el 
   assert.equal(x264AsmFor(['sse2', 'ssse3']), 'ssse3');
   assert.equal(x264AsmFor(['sse2']), null);
   assert.ok(!X264_SAME_OUTPUT.some(([n]) => /512/.test(n)), 'AVX-512 da otra salida: no puede estar en la lista');
-  assert.deepEqual(x264Args(['avx2', 'avx512f']), ['-threads:v', '2', '-x264-params', 'asm=avx2']);
-  assert.deepEqual(x264Args([]), ['-threads:v', '2']);
+  assert.deepEqual(x264Args(['avx2', 'avx512f']), ['-threads:v', '2', '-x264-params', 'asm=avx2:mbtree=0']);
+  assert.deepEqual(x264Args([]), ['-threads:v', '2', '-x264-params', 'mbtree=0']);
+});
+
+caso('mbtree apagado en toda codificación: con mbtree, Intel y AMD dan MP4 distintos (medido en Cloud Run, 2026-11-17)', () => {
+  assert.ok(X264_OFF.includes('mbtree=0'));
+  for (const flags of [['avx2', 'avx512f'], ['avx2'], ['ssse3'], []]) assert.match(x264Args(flags).at(-1), /(^|:)mbtree=0$/);
 });
 
 // Cada `libx264` (o SPEC.videoCodec) de render/src va seguido de los argumentos de x264.mjs.
