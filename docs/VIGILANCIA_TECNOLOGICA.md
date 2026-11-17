@@ -14,6 +14,76 @@ fuente externa, nombrada; *deducido* = inferencia, con su origen.
 
 ---
 
+## RONDA 2 — 2026-11-17 · estilos de texto del mercado y evidencia de éxito (F2)
+
+**Pregunta de Sam:** «¿Esos presets son los más relevantes y usos de éxito que salieron de la investigación? La idea es
+tener los mejores presets actualmente en el mercado y con referencias de éxito si es que existen.»
+
+**Límite de la ronda** (*medido*): el proxy de la sesión bloqueó ads.tiktok.com, tiktok.com, submagic.co, opus.pro,
+help.mirage.app, emplifi.io y vistasocial.com. Sólo se leyeron dos páginas de Meta; lo demás viene de los resúmenes del
+buscador y va como *reportado (buscador)*.
+
+### R2.1 Familias de subtítulos más usadas en video corto (*reportado*, buscador)
+
+Son las de Submagic, Captions/Mirage (renombrado en septiembre de 2025), CapCut, Opus Clip, VEED y Kapwing. Nombres de
+mercado con nombres de persona («Hormozi», «MrBeast», «Ali»): **no se usan aquí**. Se reproduce la mecánica, nunca la
+plantilla ni el nombre comercial.
+
+| Familia (nombre nuestro) | Mecánica | Nuestro estilo |
+|---|---|---|
+| Negrita en mayúsculas | ultrabold, MAYÚSCULAS, contorno grueso, palabra activa en color, aparición palabra a palabra | `caption_html_bold_reveal` |
+| Caja en la palabra activa | píldora de color detrás de la palabra que suena | `caption_html_word_box` |
+| Salto al sonar | sobreimpulso de escala ~100→110→100 % al activarse | `caption_html_word_pop` |
+| Mínimo | una línea, peso medio, poca animación | `caption_html_minimal` |
+| Sólo palabras clave | se marca el 5–15 % de las palabras | `caption_html_keywords` |
+
+Familia «cómic con trazo grueso»: depende de una fuente cómica. Las fuentes son dato de cada marca, así que no hay un
+estilo propio; un preset de marca puede pedirla.
+
+### R2.2 Ganchos, rol, títulos clave y CTA (*reportado*, buscador)
+
+- **Gancho:** título fijo arriba, de 3–8 palabras, con alto contraste y a menudo en caja, al menos 2 s. Ya lo cubren
+  `hook_char_rise`, `hook_line_reveal` y `hook_marker_sweep`.
+- **Rol:** nombre en peso fuerte y cargo más ligero; acento o barra; entrada corta. Ahora `role_html_card` con
+  `line_weights`. También existen la píldora (`role_html_slide`) y la versión sólo tipográfica (`role_html_focus`).
+- **Título clave:**
+  - contador con desaceleración: `key_title_counter`;
+  - dato en caja: nuevo `key_title_stat_box`;
+  - sello con resorte: `key_title_stamp_spring`;
+  - **rodillo por dígito: no se hizo**, porque necesita motor (propuesta para una fase siguiente).
+- **CTA:** la misma frase dicha y escrita, en negrita, al final y dentro de la zona segura. Meta lo recomienda (*medido*,
+  developers.facebook.com/blog/post/2024/11/07). Lo cumplen los 5 estilos de CTA.
+
+### R2.3 Evidencia de impacto
+
+- **Meta** (*medido*, página leída): «adding captions to video ads increased video view duration by an average of 12%»
+  (prueba interna, sin método publicado). Compara subtítulos con no tenerlos, no animados con estáticos.
+- **TikTok, Creative best practices** (*reportado*, buscador): propuesta en los primeros 3 s, unas 5–10 palabras por
+  segundo, texto para quien ve sin sonido; el exceso de texto puede perjudicar.
+- **Kafle, Yeung y Huenerfauth, ASSETS 2019; Kafle, Dingman y Huenerfauth, TACCESS 2021** (*reportado*, resúmenes):
+  independiente, con 30 personas sordas o con hipoacusia. Prefieren que se resalte entre el 5 y el 15 % de las palabras,
+  las clave, y en negrita a nivel de palabra. Mide preferencia y legibilidad, no retención.
+- **MUM 2024** (*reportado*): el resaltado sincronizado de palabras se prefirió para aprender, pero distrajo en la
+  comprensión.
+- **Emplifi, Facebook Reels** (*reportado*, observacional): con música, el texto mejora la retención a 3 s en ~4 %; con
+  una persona hablando, el exceso de texto distrae.
+- **Proveedores** (Clipspeed, FluxNote, Blitzcut, Opus): +10 a +34 % sin método publicado. No cuentan.
+- **Animados frente a estáticos:** segunda búsqueda con otros términos; **sigue sin aparecer ningún estudio
+  independiente** que mida retención.
+
+### R2.4 Decisiones
+
+| # | Qué | Decisión |
+|---|---|---|
+| R2.1 | Subtítulos de mercado | Adoptar las 5 familias como dato (contrato v1.7.0): `active_word.box`, `active_word.pop`, `reveal: 'spoken'` y `active_word.mode: 'keywords'` |
+| R2.2 | Rol y título clave | `line_weights` en el rol y `key_title_stat_box`; el rodillo por dígito queda para una fase siguiente |
+| R2.3 | Qué estilo rinde | No lo dice ninguna fuente independiente. Se decide con **nuestros** números: la rotación ya etiqueta cada pieza (`text_layout.presets`); falta guardar la retención por publicación (encargo aparte) |
+| R2.4 | Nombres y fuentes | Nombres por mecánica, nunca de personas ni comerciales; fuentes sólo de la marca, con licencia verificada |
+
+**Próxima ronda:** automática, cada ~10 días (tarea programada en la sesión «XX - 30sep - Warns en Telegram»).
+
+---
+
 ## RONDA 1 — 2026-11-16 · motor HTML de texto (antes de la F1)
 
 ### R1.1 Captura determinista: `beginFrame` es un 33 % más rápido y da el mismo píxel — ADOPTAR en F1
