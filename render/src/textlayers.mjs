@@ -22,6 +22,7 @@
 import { RenderError } from './plan.mjs';
 import { spokenWords } from './assemble.mjs';
 import { X264 } from './x264.mjs';
+import { EFFECT_FNS, BED_LEVEL_LU, EFFECTS_GAIN_DB } from './sound.mjs';
 
 export const TEXT_LAYERS = Object.freeze(['hook', 'role', 'caption', 'key_title', 'cta']);
 export const ENTRIES = Object.freeze(['fade', 'pop', 'pop_words', 'mask', 'type', 'punch', 'slide', 'rise', 'draw']);
@@ -245,10 +246,38 @@ export function validateTextLayers(tl, { words = null } = {}) {
     if (d.strip === true) layers++;
   }
   // v1.9.0 (sonido F1): capa de sonido opcional. No cuenta como capa de texto: un pedido sólo con sonido no dibuja nada.
+  // v1.10.0 (sonido F2): fondo (`bed`) y efectos (`effects`) por separado; la forma v1.9.0 `{ preset_key }` sigue valiendo.
   if (tl.sound != null) {
     const s = tl.sound;
     if (!obj(s)) bad('text_layers.sound debe ser un objeto o null');
-    if (!(typeof s.preset_key === 'string' && /^[a-z0-9_]{3,60}$/.test(s.preset_key))) bad('text_layers.sound.preset_key debe ser la clave de un preset de sonido');
+    const KEY = /^[a-z0-9_]{3,60}$/;
+    const familias = s.bed !== undefined || s.effects !== undefined;
+    if (familias) {
+      if (s.preset_key != null) bad('text_layers.sound lleva bed/effects o preset_key (forma v1.9.0), no los dos');
+      const fam = (name, f, extra) => {
+        if (f == null) return;
+        if (!obj(f)) bad(`text_layers.sound.${name} debe ser un objeto o null`);
+        if (f.enabled != null && typeof f.enabled !== 'boolean') bad(`text_layers.sound.${name}.enabled debe ser true o false`);
+        if (f.enabled !== false && !(typeof f.preset_key === 'string' && KEY.test(f.preset_key))) bad(`text_layers.sound.${name}.preset_key debe ser la clave de un preset de ${name === 'bed' ? 'fondo' : 'efectos'}`);
+        if (f.preset_key != null && !(typeof f.preset_key === 'string' && KEY.test(f.preset_key))) bad(`text_layers.sound.${name}.preset_key no es una clave válida`);
+        extra(f);
+      };
+      const entero = (v, r) => Number.isInteger(v) && v >= r.min && v <= r.max;
+      fam('bed', s.bed, (f) => {
+        if (f.sound_key != null && !(typeof f.sound_key === 'string' && /^bed_[a-z0-9_]{2,60}$/.test(f.sound_key))) bad('text_layers.sound.bed.sound_key debe ser un sonido de fondo de la librería (bed_…)');
+        if (f.level_lu != null && !entero(f.level_lu, BED_LEVEL_LU)) bad(`text_layers.sound.bed.level_lu debe ser un entero de ${BED_LEVEL_LU.min} a ${BED_LEVEL_LU.max}`);
+      });
+      fam('effects', s.effects, (f) => {
+        if (f.gain_db != null && !entero(f.gain_db, EFFECTS_GAIN_DB)) bad(`text_layers.sound.effects.gain_db debe ser un entero de ${EFFECTS_GAIN_DB.min} a ${EFFECTS_GAIN_DB.max}`);
+        if (f.sounds_by_fn != null) {
+          if (!obj(f.sounds_by_fn)) bad('text_layers.sound.effects.sounds_by_fn debe ser un objeto { momento: sonido | null }');
+          for (const [fn, k] of Object.entries(f.sounds_by_fn)) {
+            if (!EFFECT_FNS.includes(fn)) bad(`text_layers.sound.effects.sounds_by_fn: momento desconocido ${fn} (usa ${EFFECT_FNS.join(', ')})`);
+            if (k !== null && !(typeof k === 'string' && /^sfx_[a-z0-9_]{2,60}$/.test(k))) bad(`text_layers.sound.effects.sounds_by_fn.${fn} debe ser un efecto de la librería (sfx_…) o null`);
+          }
+        }
+      });
+    } else if (!(typeof s.preset_key === 'string' && KEY.test(s.preset_key))) bad('text_layers.sound.preset_key debe ser la clave de un preset de sonido (o usa bed/effects)');
     if (s.platform != null && !(typeof s.platform === 'string' && /^[a-z0-9_]{2,30}$/.test(s.platform))) bad('text_layers.sound.platform debe ser el nombre de una plataforma');
     if (s.enabled != null && typeof s.enabled !== 'boolean') bad('text_layers.sound.enabled debe ser true o false');
   }

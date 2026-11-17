@@ -1,4 +1,37 @@
-# MOTOR DE SONIDO — F1 (en el job) y F0 (prueba medida) · 2026-11-17
+# MOTOR DE SONIDO — F2 (fondo y efectos), F1 (en el job) y F0 (prueba medida) · 2026-11-17
+
+> Cabecera anterior, conservada: «MOTOR DE SONIDO — F1 (en el job) y F0 (prueba medida) · 2026-11-17».
+
+## F2 — fondo y efectos por separado (2026-11-17)
+
+**Decisiones de Sam** (por la sesión del Orchestrator y confirmadas aquí: «sí al objetivo F2, silenciar sí, lista de B»):
+
+1. Los controles de sonido son un botón junto a «Texto en pantalla» en la tarjeta de cada pieza, que abre la ventana de
+   Controles de Sonido.
+2. En esa ventana van separados «Sonidos de fondo» y «Efectos de sonido». Cada uno tiene presets, acceso a la librería y
+   volumen.
+3. El fondo entra en la rotación; los efectos van según lo que pida la pieza.
+
+**Qué se construyó:**
+
+- **Datos (`unrlvl-iid-functions`):**
+  - `videolab_sound_presets.kind` con los valores `bed`, `effects` y `mixed`;
+  - 6 presets de fondo, uno por cama;
+  - 6 de efectos: Discreto, Cálido, Brillante, Para cifras, Amable y Mínimo (`docs/sound_presets_f2.json`);
+  - los 6 de la F1 quedan `mixed`.
+- **VoiceLab:** `GET /api/sound-library` lista los sonidos activos que ve la marca, con URL de escucha (contrato VoiceLab v1.2
+  §3 ter).
+- **Job (contrato v1.10.0 §4 ter.8):** `composeSoundSpec` arma la mezcla así:
+  - toma la cama del preset de fondo y los momentos del preset de efectos;
+  - aplica encima lo elegido de la librería y los volúmenes;
+  - un momento con `null` queda en silencio y no se pide a VoiceLab;
+  - lo demás (huellas, hoja de entradas, ducking, sonoridad final, `SOUND_FALLBACK`) no cambia respecto de la F1.
+- **Rotación:** `GET /api/text-styles` sugiere el fondo (`suggested.sound_bed`) con la misma regla del menos usado que el
+  texto.
+
+**Por qué un preset de efectos declara todos los momentos:** la ventana puede poner un sonido de la librería en cualquier
+momento. Si el preset no lo declarara, el nivel y el desfase de ese momento habría que inventarlos en el código. Por eso
+«Mínimo» trae sus siete momentos y cinco de ellos en silencio (`"sound": null`).
 
 ## F1 — la capa de sonido entra en el job (2026-11-17)
 

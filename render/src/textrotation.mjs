@@ -39,15 +39,35 @@ export function rotationPool(visible, layer) {
  */
 export function suggestStyles(rows, brandId, history, layers = ROTATION_LAYERS) {
   const visible = visiblePresets(rows, brandId);
+  const lastSeen = lastSeenOf(history);
+  const out = {};
+  for (const layer of layers) out[layer] = leastRecent(rotationPool(visible, layer), lastSeen);
+  return out;
+}
+
+/** Para cada clave, el índice del job más reciente que la usó (0 = el último). PURO. */
+function lastSeenOf(history) {
   const lastSeen = new Map();
   (history ?? []).forEach((keys, i) => { for (const k of keys ?? []) if (!lastSeen.has(k)) lastSeen.set(k, i); });
-  const out = {};
-  for (const layer of layers) {
-    const pool = rotationPool(visible, layer);
-    if (!pool.length) { out[layer] = null; continue; }
-    const age = (r) => (lastSeen.has(r.preset_key) ? lastSeen.get(r.preset_key) : Infinity);
-    pool.sort((a, b) => (age(b) - age(a)) || (Number(a.sort ?? 100) - Number(b.sort ?? 100)) || String(a.preset_key).localeCompare(String(b.preset_key)));
-    out[layer] = { preset_key: pool[0].preset_key, pool: pool.map((r) => r.preset_key) };
-  }
-  return out;
+  return lastSeen;
+}
+
+/** El del grupo usado hace más tiempo (nunca usado = el más antiguo); empate → menor `sort`, luego clave. PURO. */
+function leastRecent(pool, lastSeen) {
+  if (!pool.length) return null;
+  const age = (r) => (lastSeen.has(r.preset_key) ? lastSeen.get(r.preset_key) : Infinity);
+  const sorted = [...pool].sort((a, b) => (age(b) - age(a)) || (Number(a.sort ?? 100) - Number(b.sort ?? 100)) || String(a.preset_key).localeCompare(String(b.preset_key)));
+  return { preset_key: sorted[0].preset_key, pool: sorted.map((r) => r.preset_key) };
+}
+
+/**
+ * SONIDO DE FONDO (sonido F2, 2026-11-17). Decisión de Sam: «sonido de fondo entra en la rotación, efectos de sonido van
+ * de acuerdo a la necesidad». El grupo son los presets de fondo (`kind = 'bed'` en `videolab_sound_presets`) que ve la
+ * marca, validados si los hay; si no, todos los activos. `history` = presets de fondo usados por la marca, del job más
+ * reciente al más antiguo (`lab_jobs.output_parsed.text_layout.sound.bed.preset_key`). Misma regla que el texto. PURO.
+ */
+export function suggestSoundBed(rows, brandId, history) {
+  const beds = visiblePresets(rows, brandId).filter((r) => r.kind === 'bed');
+  const validated = beds.filter((r) => String(r.status ?? '').startsWith('validated'));
+  return leastRecent(validated.length ? validated : beds, lastSeenOf(history));
 }
