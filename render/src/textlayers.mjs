@@ -27,6 +27,8 @@ export const TEXT_LAYERS = Object.freeze(['hook', 'role', 'caption', 'key_title'
 export const ENTRIES = Object.freeze(['fade', 'pop', 'pop_words', 'mask', 'type', 'punch', 'slide', 'rise', 'draw']);
 /** Entrada del rol: sutil, como mucho 350 ms y sin rebote (decisión de Sam, 2026-11-16). */
 export const ROLE_MAX_ENTRY_MS = 350;
+/** Palabras clave de los subtítulos por pedido (F2): la evidencia prefiere marcar el 5–15 % de las palabras. */
+export const CAPTION_KEYWORDS_MAX = 12;
 /** Margen mínimo entre el rol y la banda de subtítulos, en % de la altura del lienzo. */
 export const ROLE_CAPTION_MARGIN_PCT = 2;
 /** Rol tipográfico por capa (contrato §3.3); el preset puede pedir otro con `font_role`. */
@@ -199,6 +201,13 @@ export function validateTextLayers(tl, { words = null } = {}) {
       if (c.accent_role != null && !str(c.accent_role)) bad('captions.accent_role debe ser un rol de brand_palette');
       if (words != null && (!Array.isArray(words) || !words.length)) bad('los subtítulos necesitan timeline.words');
       validatePlace(c.place, 'captions', { zoomOnly: true });
+      // Palabras clave de los subtítulos (F2): las que un preset con `active_word.mode: 'keywords'` marca en el acento.
+      if (c.keywords != null) {
+        if (!Array.isArray(c.keywords) || c.keywords.length > CAPTION_KEYWORDS_MAX
+          || c.keywords.some((k) => typeof k !== 'string' || !k.trim() || k.length > SPAN_MAX_CHARS)) {
+          bad(`captions.keywords: hasta ${CAPTION_KEYWORDS_MAX} textos no vacíos de hasta ${SPAN_MAX_CHARS} caracteres`);
+        }
+      }
       layers++;
     }
   }
@@ -283,6 +292,12 @@ export function resolveTextPreset(rows, key, brandId, layer) {
   if (row.spec.engine != null && !TEXT_ENGINES.includes(row.spec.engine)) bad(`el preset ${key} pide un motor desconocido: ${row.spec.engine} (${TEXT_ENGINES.join(' | ')})`);
   if (layer === 'role' && num(row.spec.duration_ms, 0) > ROLE_MAX_ENTRY_MS) {
     bad(`el preset de rol ${key} entra en ${row.spec.duration_ms} ms (tope ${ROLE_MAX_ENTRY_MS} ms)`);
+  }
+  if (row.spec.line_weights != null) {
+    const lw = row.spec.line_weights;
+    if (!Array.isArray(lw) || lw.some((w) => !(Number(w) >= 100 && Number(w) <= 900))) bad(`el preset ${key}: line_weights es una lista de pesos 100–900`);
+    // La medida usa el peso del bloque: una línea más gruesa que el bloque se saldría de su caja.
+    if (lw.some((w) => Number(w) >= 600) && row.spec.bold !== true) bad(`el preset ${key}: con una línea en negrita en line_weights, el bloque se mide en negrita (bold: true)`);
   }
   if (layer === 'role') {
     const p = roleMotionProblem(row.spec.motion, num(row.spec.max_lines, 3));

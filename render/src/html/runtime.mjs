@@ -11,7 +11,7 @@
 
 import { stateAt, rectAt } from './keyframes.mjs';
 
-export const RUNTIME_VERSION = '1.5.0';
+export const RUNTIME_VERSION = '1.7.0';
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const hex = (h, a = 1) => { const n = parseInt(h.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
@@ -122,6 +122,7 @@ export function mount(root, scene, doc = root.ownerDocument) {
     b.lines.forEach((ln, li) => {
       const line = el('', text);
       lineStyle(line, { family: b.family, px: b.px, lh: b.lh, bold: b.bold, outline: b.outline, outlineColor: b.colors.outline, shadow: b.shadow, shadowColor: b.colors.shadow });
+      if (ln.weight != null) line.style.fontWeight = String(ln.weight);
       line.style.top = (content.y + b.pad.y + b.ext + li * Math.round(b.px * b.lh)) + 'px';
       if (b.align === 'left') line.style.left = (b.pad.x + b.ext) + 'px';
       else Object.assign(line.style, { left: (b.pad.x + b.ext) + 'px', width: (b.rect.w - 2 * (b.pad.x + b.ext)) + 'px', textAlign: b.align });
@@ -170,7 +171,20 @@ export function mount(root, scene, doc = root.ownerDocument) {
       const line = el('', wrap);
       lineStyle(line, { family: cap.family, px: g.px, lh: g.lh, bold: g.bold, outline: g.outline, outlineColor: cap.colors.outline, shadow: g.shadow, shadowColor: cap.colors.shadow });
       Object.assign(line.style, { left: '0px', width: g.w + 'px', textAlign: 'center', top: (g.pad.y + g.ext + li * Math.round(g.px * g.lh)) + 'px', color: cap.colors.text });
-      ln.forEach((w, wi) => { if (wi) line.appendChild(doc.createTextNode(' ')); const s = unit(span('', line, w.text)); s._w = w; words.push(s); });
+      ln.forEach((w, wi) => {
+        if (wi) line.appendChild(doc.createTextNode(' '));
+        const s = unit(span('', line, w.text)); s._w = w; words.push(s);
+        // Caja detrás de la palabra que suena (active_word.box): una capa propia, detrás del texto y sin mover la línea.
+        if (cap.active_box) {
+          const b = cap.active_box;
+          const mk = abs(span('', s));
+          Object.assign(mk.style, { left: -r3(b.pad_x_em * g.px) + 'px', top: -r3(b.pad_y_em * g.px) + 'px',
+            width: 'calc(100% + ' + r3(2 * b.pad_x_em * g.px) + 'px)', height: 'calc(100% + ' + r3(2 * b.pad_y_em * g.px) + 'px)',
+            borderRadius: r3(b.radius_em * g.px) + 'px', background: hex(b.color, b.opacity), zIndex: '-1', display: 'none' });
+          Object.assign(s.style, { position: 'relative', isolation: 'isolate' });
+          s._box = mk;
+        }
+      });
     });
     return { g, wrap, words };
   }) : [];
@@ -225,9 +239,19 @@ export function mount(root, scene, doc = root.ownerDocument) {
         const active = t >= w.start_ms && t < w.end_ms;
         // La palabra activa crece con el TAMAÑO de letra, no con transform: la línea se recoloca y la palabra no se
         // come el espacio de al lado.
-        node.style.fontSize = active && cap.active_scale !== 1 ? r3(c.g.px * cap.active_scale) + 'px' : '';
+        const marked = cap.keywords_only ? !!w.keyword : active;   // qué palabra lleva el acento
+        node.style.fontSize = active && cap.active_scale !== 1 && (!cap.keywords_only || w.keyword) ? r3(c.g.px * cap.active_scale) + 'px' : '';
         apply(node, stateAt(cap.tracks, 'word', t, gb, { i, n: c.words.length }), c.g.px);
-        node.style.color = active ? cap.colors.active : cap.colors.text;
+        // Salto al sonar (active_word.pop): sube y vuelve en `ms`, con un seno (sin rebote). Se suma al transform de las pistas.
+        if (cap.pop && active && (!cap.keywords_only || w.keyword)) {
+          const k = Math.min(1, Math.max(0, (t - w.start_ms) / cap.pop.ms));
+          const sc = 1 + (cap.pop.scale - 1) * Math.sin(Math.PI * k);
+          if (sc !== 1) node.style.transform = (node.style.transform ? node.style.transform + ' ' : '') + 'scale(' + r3(sc) + ')';
+        }
+        // Palabra a palabra al decirse (reveal: 'spoken'): lo que aún no se dijo no se ve.
+        if (cap.reveal === 'spoken' && t < w.start_ms) node.style.opacity = '0';
+        node.style.color = marked ? cap.colors.active : cap.colors.text;
+        if (node._box) node._box.style.display = active && (!cap.keywords_only || w.keyword) ? 'block' : 'none';
       });
     }
   }

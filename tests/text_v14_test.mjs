@@ -282,7 +282,7 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
 {
   const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
   caso('subtítulos: el aviso TEXT_CAPTION_FAST sale en text_layout, y ASS y HTML usan los mismos tiempos de grupo', () => {
-    const tl = { captions: { enabled: true, preset_key: 'caption_html_pop', accent_role: 'brasa' } };
+    const tl = { captions: { enabled: true, preset_key: 'caption_html_word_pop', accent_role: 'brasa' } };
     const a = args({ textLayers: tl, presets: [...PRESETS, ...F2] });
     const words = [];
     'una frase que se dice muy pero muy rápido para probar el tope de lectura'.split(' ').forEach((t, i) => words.push({ text: t, start_ms: i * 90, end_ms: i * 90 + 80, person_id: 'p1' }));
@@ -290,7 +290,7 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
     const plan = T.buildTextLayers(a);
     assert.ok(plan.warnings.some((x) => x.startsWith('TEXT_CAPTION_FAST')), plan.warnings.join(' | '));
     const sc = buildScene(a);
-    const { times } = T.captionTimes(T.groupCaptionWords(T.timelineWords(a.timeline), { min: 3, max: 4, maxGapMs: 700 }), F2.find((r) => r.preset_key === 'caption_html_pop').spec, a.durationMs);
+    const { times } = T.captionTimes(T.groupCaptionWords(T.timelineWords(a.timeline), { min: 3, max: 4, maxGapMs: 700 }), F2.find((r) => r.preset_key === 'caption_html_word_pop').spec, a.durationMs);
     assert.deepEqual(sc.captions.groups.map((x) => [x.start_ms, x.end_ms]), times.map((x) => [x.start_ms, x.end_ms]));
   });
 }
@@ -362,6 +362,20 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
     assert.deepEqual(historyOf([{ presets: ['a', 'b'] }, { presets: null }, {}, { presets: ['c', 3] }]), [['a', 'b'], [], [], ['c']]);
   });
 }
+
+caso('v1.7.0: captions.keywords con forma y límites; line_weights con negrita exige bold', () => {
+  const tl = (kw) => ({ captions: { enabled: true, preset_key: 'caption_karaoke_accent', keywords: kw } });
+  const words = WORDS;
+  assert.doesNotThrow(() => T.validateTextLayers(tl(['negocio', 'uno por ciento']), { words }));
+  bad(() => T.validateTextLayers(tl('negocio'), { words }), /captions\.keywords/);
+  bad(() => T.validateTextLayers(tl(Array(13).fill('x')), { words }), /captions\.keywords/);
+  bad(() => T.validateTextLayers(tl(['']), { words }), /captions\.keywords/);
+  const role = PRESETS.find((r) => r.layer === 'role');
+  const lw = (spec) => [{ ...role, preset_key: 'rol_lw', spec: { ...role.spec, ...spec } }];
+  assert.doesNotThrow(() => T.resolveTextPreset(lw({ bold: true, line_weights: [700, 400] }), 'rol_lw', BRAND, 'role'));
+  bad(() => T.resolveTextPreset(lw({ bold: false, line_weights: [700, 400] }), 'rol_lw', BRAND, 'role'), /bold: true/);
+  bad(() => T.resolveTextPreset(lw({ bold: true, line_weights: [1200] }), 'rol_lw', BRAND, 'role'), /line_weights/);
+});
 
 await Promise.all(pendientes);
 if (fallos) { console.error(`\n${fallos} caso(s) MAL`); process.exit(1); }

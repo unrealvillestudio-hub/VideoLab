@@ -41,6 +41,9 @@ export function numberToken(word) {
   return { prefix: m[1], value, decimals, decSep, thouSep, suffix: m[3] };
 }
 
+/** Una palabra para comparar con las palabras clave: minúsculas, sin signos alrededor. PURO. */
+export const normWord = (w) => String(w ?? '').toLocaleLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+
 /**
  * La escena completa. Mismos argumentos que `buildTextLayers` más `fps`. Devuelve
  * { canvas, fps, durationMs, safe, families, blocks, captions, filters, warnings, layout } — `layout` es la geometría
@@ -75,6 +78,9 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
       pad: { x: m.padX, y: m.padY }, ext: m.ext,
       lines: d.words.map((ws, li) => ({
         width: m.widths[li],
+        // Peso por línea (F2, `spec.line_weights`, p. ej. [700, 400]: nombre fuerte y cargo más ligero). La medida se hizo
+        // con el peso del bloque (negrita), que es el más ancho: una línea más ligera nunca se sale de su caja.
+        ...(Array.isArray(spec.line_weights) && spec.line_weights[li] != null ? { weight: Number(spec.line_weights[li]) } : {}),
         words: ws.map((w) => ({
           text: w.text, emphasis: w.emphasis, number: numberToken(w.text),
           runs: w.runs.map((r) => ({ text: r.text, ...(r.italic ? { italic: true } : {}),
@@ -116,6 +122,7 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
     const aw = obj(spec.active_word) ? spec.active_word : {};
     const motion = obj(spec.motion) ? spec.motion : null;
     validateMotion(motion, `${row.preset_key}.motion`);
+    const kw = new Set((Array.isArray(tl.captions.keywords) ? tl.captions.keywords : []).flatMap((k) => String(k).split(/\s+/)).map(normWord).filter(Boolean));
     captions = {
       preset_key: row.preset_key, band: band.rect, family: fam,
       colors: {
@@ -125,6 +132,17 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
         box: obj(spec.box) ? color(spec.box.color ?? 'scrim') : null,
       },
       active_scale: num(aw.scale, 1),
+      // F2 (2026-11-17, ronda 2 de vigilancia: las mecánicas de subtítulos más usadas del mercado). Todo opcional y dato:
+      //  - active_word.box: caja (píldora) detrás de la palabra que suena;
+      //  - active_word.pop: salto de escala de la palabra al empezar a sonar (sube y vuelve, sin rebote);
+      //  - reveal: 'spoken': cada palabra aparece cuando se dice (no el grupo entero de golpe);
+      //  - active_word.mode: 'keywords': sólo las palabras clave del pedido (`captions.keywords`) van en el acento —la
+      //    evidencia independiente prefiere marcar el 5–15 % de las palabras, no todas—.
+      active_box: obj(aw.box) ? { color: color(aw.box.color ?? 'accent'), opacity: num(aw.box.opacity, 1),
+        radius_em: num(aw.box.radius_em, 0.18), pad_x_em: num(aw.box.pad_x_em, 0.12), pad_y_em: num(aw.box.pad_y_em, 0.02) } : null,
+      pop: obj(aw.pop) ? { scale: num(aw.pop.scale, 1.12), ms: Math.max(1, num(aw.pop.ms, 180)) } : null,
+      reveal: spec.reveal === 'spoken' ? 'spoken' : 'group',
+      keywords_only: aw.mode === 'keywords',
       tracks: motion ? motion.tracks : [],
       groups: groups.map((g, gi) => {
         const m = measureBlock({ text: g.map((w) => w.text).join(' '), spec, layer: 'caption', canvas, maxW: safe.w, measure, family: fam });
@@ -139,7 +157,7 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
             const src = g[k];
             const next = g[k + 1];
             k++;
-            return { text: w, start_ms: src.start_ms, end_ms: next ? next.start_ms : gEnd };
+            return { text: w, start_ms: src.start_ms, end_ms: next ? next.start_ms : gEnd, keyword: kw.has(normWord(w)) };
           })),
         };
       }).filter((g) => g.start_ms < durationMs),

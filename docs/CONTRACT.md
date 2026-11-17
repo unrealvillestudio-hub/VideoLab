@@ -172,7 +172,7 @@ POST /api/execute                                  // mismo transporte: 202 + la
     text_layers: {
       hook?:       { text, preset_key, start_ms, end_ms, emphasis?: [texto] } | null,
       roles?:      [{ person_id, text, show, at_ms, dur_ms, preset_key }],
-      captions?:   { enabled, preset_key, accent_role? } | null,     // accent_role: rol de brand_palette
+      captions?:   { enabled, preset_key, accent_role?, keywords? } | null,  // accent_role: rol de brand_palette; keywords (v1.7.0): ≤ 12 textos
       key_titles?: [{ text, at_ms, dur_ms, preset_key }],
       cta?:        { text, at_ms, dur_ms?, preset_key } | null,       // sin dur_ms, hasta el final
       identity?:   { strip, identity_role?, strip_role? } } } }        // identity_role: rol de brand_palette (strip_role: alias heredado, §4 ter.5)
@@ -252,6 +252,11 @@ para que la migración de datos la copie tal cual.
 | `active_word` | `{ color, scale }` | subtítulos: la palabra que suena | `{ color: 'accent', scale: 1 }` |
 | `hold_gap_ms` | número | subtítulos (v1.5.0): si la pausa hasta el grupo siguiente es ≤ este valor, el grupo se queda en pantalla hasta que entra el siguiente | 0 (sin espera) |
 | `max_cps` | número | subtítulos (v1.5.0): tope de lectura en caracteres por segundo; un grupo que lo pasa no se corta, se avisa (`TEXT_CAPTION_FAST`) | sin tope |
+| `active_word.box` | `{ color, opacity, radius_em, pad_x_em, pad_y_em }` | subtítulos (v1.7.0, motor `html`): caja detrás de la palabra que suena | sin caja |
+| `active_word.pop` | `{ scale, ms }` | subtítulos (v1.7.0, motor `html`): salto de escala al empezar a sonar (sube y vuelve, sin rebote) | sin salto |
+| `active_word.mode` | `all` \| `keywords` | subtítulos (v1.7.0, motor `html`): `keywords` marca en el acento sólo las palabras de `captions.keywords` del pedido | `all` |
+| `reveal` | `group` \| `spoken` | subtítulos (v1.7.0, motor `html`): `spoken` hace aparecer cada palabra cuando se dice | `group` |
+| `line_weights` | lista de pesos 100–900 | peso por línea (v1.7.0, motor `html`), p. ej. `[700, 400]` para nombre fuerte y cargo ligero; con una línea ≥ 600 el preset lleva `bold: true` (la medida usa el peso del bloque) | el del bloque |
 
 **Colores.** Un color es un **hueco** que se resuelve con el dato de la marca, `palette:<rol>` (sólo en filas de
 marca) o un hex neutro escrito en el dato (p. ej. negro de contorno). Huecos: `text` (`tokens.palette.headline` de
@@ -463,6 +468,10 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.7.0 (2026-11-17)** — Subtítulos y rol con las mecánicas de mercado de la ronda 2 de vigilancia, sólo en el motor `html`
+  (en el respaldo ASS se ignoran): `active_word.box`, `active_word.pop`, `active_word.mode: 'keywords'` con
+  `captions.keywords` en el pedido (≤ 12 textos de ≤ 60 caracteres), `reveal: 'spoken'` y `line_weights`. Runtime 1.7.0.
+  Compatible hacia atrás: sin los campos nuevos, igual que en v1.6.0.
 - **v1.6.0 (2026-11-17)** — Rotación de estilos (§4 ter.7): `GET /api/text-styles?brandId=…` sugiere por capa el
   estilo usado hace más tiempo por la marca, entre los `html` validados. Quien genera congela la sugerencia en
   `text_layers`. Sin cambio de forma en el pedido ni en la salida.

@@ -1,5 +1,5 @@
 {
- "_doc": "Estilos de texto del motor HTML, F2 (2026-11-17). Objetivo validado por Sam: 5 estilos html por capa, rotados por el carril entre generaciones. Con los 3 de la F0 (docs/html_presets_f0.json, ya sembrados) suman 25: 5 de gancho, 5 de rol, 5 de subtítulos, 5 de título clave y 5 de CTA. Mismo esquema que text_presets_seed.json más `engine: 'html'` y `motion` (render/src/html/keyframes.mjs). Las claves de geometría son las de los presets medidos de cada capa. Los de rol entran en ≤ 350 ms y sin rebote. Todos `proposed`: los valida Sam. La migración de datos los copia tal cual.",
+ "_doc": "Estilos de texto del motor HTML, F2 (2026-11-17). Objetivo validado por Sam: 5 estilos html por capa, rotados por el carril entre generaciones. Con los 3 de la F0 (docs/html_presets_f0.json, ya sembrados) suman 25: 5 de gancho, 5 de rol, 5 de subtítulos, 5 de título clave y 5 de CTA. Mismo esquema que text_presets_seed.json más `engine: 'html'` y `motion` (render/src/html/keyframes.mjs). Las claves de geometría son las de los presets medidos de cada capa. Los de rol entran en ≤ 350 ms y sin rebote. Todos `proposed`: los valida Sam. La migración de datos los copia tal cual. Ronda 2 de vigilancia (2026-11-17): los subtítulos se rehicieron con las mecánicas de mercado (aparición al decirse, caja en la palabra activa, salto al sonar, mínimo, sólo palabras clave), el título clave «por líneas» pasó a «dato en caja» y la tarjeta de rol lleva nombre en negrita y cargo ligero.",
  "version": "f2",
  "date": "2026-11-17",
  "rows": [
@@ -696,7 +696,7 @@
    "preset_key": "role_html_card",
    "layer": "role",
    "name": "Tarjeta de rol en dos líneas",
-   "description": "Nombre arriba y rol debajo (corta en « — »); la tarjeta sube y cada línea aparece en orden.",
+   "description": "Nombre arriba en negrita y cargo debajo más ligero (corta en « — »); la tarjeta sube y cada línea aparece en orden. Forma más común del rótulo en video vertical (ronda 2).",
    "brand_id": null,
    "active": true,
    "status": "proposed",
@@ -773,298 +773,13 @@
        ]
       }
      ]
-    }
-   }
-  },
-  {
-   "preset_key": "caption_html_pop",
-   "layer": "caption",
-   "name": "Subtítulos que saltan",
-   "description": "Cada grupo entra con un salto corto; la palabra que suena va en el acento y un poco más grande.",
-   "brand_id": null,
-   "active": true,
-   "status": "proposed",
-   "source": "motor_html_f2",
-   "sort": 40,
-   "spec": {
-    "engine": "html",
-    "group_min": 3,
-    "group_max": 4,
-    "max_gap_ms": 700,
-    "size_pct": 3.5,
-    "min_size_pct": 2.6,
-    "max_lines": 2,
-    "bold": true,
-    "line_height": 1.15,
-    "color": "text",
-    "outline": {
-     "color": "#000000",
-     "width_pct": 0.2
     },
-    "shadow": {
-     "color": "#000000",
-     "depth_pct": 0.12,
-     "alpha": 0.45
-    },
-    "active_word": {
-     "color": "accent",
-     "scale": 1.08
-    },
-    "motion": {
-     "tracks": [
-      {
-       "target": "block",
-       "keys": [
-        {
-         "t": 0,
-         "opacity": 0,
-         "scale": 0.9
-        },
-        {
-         "t": 180,
-         "opacity": 1,
-         "scale": 1,
-         "ease": "back_out"
-        }
-       ]
-      }
-     ]
-    },
-    "hold_gap_ms": 450,
-    "max_cps": 17
-   }
-  },
-  {
-   "preset_key": "caption_html_rise",
-   "layer": "caption",
-   "name": "Subtítulos palabra a palabra",
-   "description": "Las palabras del grupo suben una tras otra; la que suena va en el acento.",
-   "brand_id": null,
-   "active": true,
-   "status": "proposed",
-   "source": "motor_html_f2",
-   "sort": 50,
-   "spec": {
-    "engine": "html",
-    "group_min": 3,
-    "group_max": 4,
-    "max_gap_ms": 700,
-    "size_pct": 3.5,
-    "min_size_pct": 2.6,
-    "max_lines": 2,
-    "bold": true,
-    "line_height": 1.15,
-    "color": "text",
-    "outline": {
-     "color": "#000000",
-     "width_pct": 0.2
-    },
-    "shadow": {
-     "color": "#000000",
-     "depth_pct": 0.12,
-     "alpha": 0.45
-    },
-    "active_word": {
-     "color": "accent",
-     "scale": 1.06
-    },
-    "motion": {
-     "tracks": [
-      {
-       "target": "word",
-       "stagger": {
-        "each_ms": 45
-       },
-       "keys": [
-        {
-         "t": 0,
-         "opacity": 0,
-         "y_em": 0.35
-        },
-        {
-         "t": 200,
-         "opacity": 1,
-         "y_em": 0,
-         "ease": "expo_out"
-        }
-       ]
-      }
-     ]
-    },
-    "hold_gap_ms": 450,
-    "max_cps": 17
-   }
-  },
-  {
-   "preset_key": "caption_html_box",
-   "layer": "caption",
-   "name": "Subtítulos en caja que sube",
-   "description": "El grupo sube sobre una caja de la marca; la palabra que suena en el acento.",
-   "brand_id": null,
-   "active": true,
-   "status": "proposed",
-   "source": "motor_html_f2",
-   "sort": 60,
-   "spec": {
-    "engine": "html",
-    "group_min": 3,
-    "group_max": 4,
-    "max_gap_ms": 700,
-    "size_pct": 3.4,
-    "min_size_pct": 2.6,
-    "max_lines": 2,
-    "bold": true,
-    "line_height": 1.15,
-    "color": "text",
-    "box": {
-     "color": "scrim",
-     "opacity": 0.78,
-     "pad_x_pct": 1.6,
-     "pad_y_pct": 0.6,
-     "radius_pct": 0.8
-    },
-    "active_word": {
-     "color": "accent",
-     "scale": 1
-    },
-    "motion": {
-     "tracks": [
-      {
-       "target": "block",
-       "keys": [
-        {
-         "t": 0,
-         "opacity": 0,
-         "y_em": 0.4
-        },
-        {
-         "t": 200,
-         "opacity": 1,
-         "y_em": 0,
-         "ease": "cubic_out"
-        }
-       ]
-      }
-     ]
-    },
-    "hold_gap_ms": 450,
-    "max_cps": 17
-   }
-  },
-  {
-   "preset_key": "caption_html_focus",
-   "layer": "caption",
-   "name": "Subtítulos que enfocan",
-   "description": "Cada grupo aparece con un desenfoque que se aclara; sin caja, sólo sombra.",
-   "brand_id": null,
-   "active": true,
-   "status": "proposed",
-   "source": "motor_html_f2",
-   "sort": 70,
-   "spec": {
-    "engine": "html",
-    "group_min": 3,
-    "group_max": 4,
-    "max_gap_ms": 700,
-    "size_pct": 3.4,
-    "min_size_pct": 2.6,
-    "max_lines": 2,
-    "bold": false,
-    "line_height": 1.15,
-    "color": "text",
-    "shadow": {
-     "color": "#000000",
-     "depth_pct": 0.15,
-     "alpha": 0.6
-    },
-    "active_word": {
-     "color": "accent",
-     "scale": 1
-    },
-    "motion": {
-     "tracks": [
-      {
-       "target": "block",
-       "keys": [
-        {
-         "t": 0,
-         "opacity": 0,
-         "blur_em": 0.1
-        },
-        {
-         "t": 160,
-         "opacity": 1,
-         "blur_em": 0,
-         "ease": "cubic_out"
-        }
-       ]
-      }
-     ]
-    },
-    "hold_gap_ms": 450,
-    "max_cps": 17
-   }
-  },
-  {
-   "preset_key": "caption_html_bold",
-   "layer": "caption",
-   "name": "Subtítulos grandes en mayúsculas",
-   "description": "Grupos cortos en mayúsculas, más grandes; cada palabra entra con un golpe breve.",
-   "brand_id": null,
-   "active": true,
-   "status": "proposed",
-   "source": "motor_html_f2",
-   "sort": 80,
-   "spec": {
-    "engine": "html",
-    "group_min": 2,
-    "group_max": 3,
-    "max_gap_ms": 700,
-    "size_pct": 4.2,
-    "min_size_pct": 2.8,
-    "max_lines": 2,
-    "bold": true,
-    "line_height": 1.15,
-    "color": "text",
-    "uppercase": true,
-    "outline": {
-     "color": "#000000",
-     "width_pct": 0.24
-    },
-    "shadow": {
-     "color": "#000000",
-     "depth_pct": 0.12,
-     "alpha": 0.45
-    },
-    "active_word": {
-     "color": "accent",
-     "scale": 1.1
-    },
-    "motion": {
-     "tracks": [
-      {
-       "target": "word",
-       "stagger": {
-        "each_ms": 60
-       },
-       "keys": [
-        {
-         "t": 0,
-         "opacity": 0,
-         "scale": 1.25
-        },
-        {
-         "t": 160,
-         "opacity": 1,
-         "scale": 1,
-         "ease": "expo_out"
-        }
-       ]
-      }
-     ]
-    },
-    "hold_gap_ms": 450,
-    "max_cps": 17
+    "line_weights": [
+     700,
+     400,
+     400,
+     400
+    ]
    }
   },
   {
@@ -1153,19 +868,19 @@
    }
   },
   {
-   "preset_key": "key_title_line_reveal",
+   "preset_key": "key_title_stat_box",
    "layer": "key_title",
-   "name": "Título que se descubre por líneas",
-   "description": "Cada línea se descubre de izquierda a derecha, escalonada, con el filete de la marca encima.",
+   "name": "Dato en caja que cuenta",
+   "description": "La cifra cuenta desde cero dentro de una caja de la marca, con un filete del acento encima; el resto de la frase entra escalonada. Familia «stat callout» de la ronda 2.",
    "brand_id": null,
    "active": true,
    "status": "proposed",
-   "source": "motor_html_f2",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
    "sort": 50,
    "spec": {
     "engine": "html",
-    "size_pct": 4.6,
-    "min_size_pct": 3.2,
+    "size_pct": 4.4,
+    "min_size_pct": 3,
     "max_lines": 4,
     "bold": true,
     "line_height": 1.12,
@@ -1173,54 +888,84 @@
     "align": "center",
     "color": "text",
     "emphasis_color": "accent",
-    "entry": "mask",
-    "duration_ms": 450,
+    "entry": "fade",
+    "duration_ms": 300,
     "exit_ms": 250,
-    "outline": {
-     "color": "#000000",
-     "width_pct": 0.16
-    },
-    "shadow": {
-     "color": "#000000",
-     "depth_pct": 0.12,
-     "alpha": 0.45
+    "box": {
+     "color": "scrim",
+     "opacity": 0.86,
+     "pad_x_pct": 2.4,
+     "pad_y_pct": 1.1,
+     "radius_pct": 0.8
     },
     "rule": {
-     "color": "rule",
-     "width_pct": 12,
+     "color": "accent",
+     "width_pct": 10,
      "thickness_pct": 0.3,
-     "gap_pct": 1.2,
+     "gap_pct": 0.8,
      "position": "above"
     },
     "motion": {
      "tracks": [
       {
-       "target": "rule",
+       "target": "box",
        "keys": [
         {
          "t": 0,
+         "opacity": 0,
+         "scale": 0.96
+        },
+        {
+         "t": 220,
+         "opacity": 1,
+         "scale": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "rule",
+       "keys": [
+        {
+         "t": 120,
          "scale_x": 0
         },
         {
-         "t": 400,
+         "t": 520,
          "scale_x": 1,
          "ease": "expo_out"
         }
        ]
       },
       {
-       "target": "line",
+       "target": "word",
        "stagger": {
-        "each_ms": 140
+        "each_ms": 40
        },
        "keys": [
         {
-         "t": 100,
-         "clip_r": 1
+         "t": 80,
+         "opacity": 0,
+         "y_em": 0.3
         },
         {
-         "t": 560,
-         "clip_r": 0,
+         "t": 400,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "number",
+       "keys": [
+        {
+         "t": 100,
+         "count": 0
+        },
+        {
+         "t": 1200,
+         "count": 1,
          "ease": "expo_out"
         }
        ]
@@ -1808,6 +1553,308 @@
          "t": 0,
          "opacity": 0,
          "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_bold_reveal",
+   "layer": "caption",
+   "name": "Negrita en mayúsculas que aparece al decirse",
+   "description": "Mayúsculas en negrita con contorno grueso; cada palabra aparece cuando se dice y la que suena va en el acento con un salto corto. Es la familia de subtítulos más usada en video corto (ronda 2).",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
+   "sort": 40,
+   "spec": {
+    "engine": "html",
+    "group_min": 2,
+    "group_max": 3,
+    "max_gap_ms": 700,
+    "size_pct": 4.2,
+    "min_size_pct": 2.8,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "hold_gap_ms": 450,
+    "max_cps": 17,
+    "uppercase": true,
+    "reveal": "spoken",
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.26
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1,
+     "pop": {
+      "scale": 1.12,
+      "ms": 160
+     }
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 80,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_word_box",
+   "layer": "caption",
+   "name": "Caja detrás de la palabra que suena",
+   "description": "Texto en blanco y una píldora del color de acento detrás de la palabra que suena; el texto de esa palabra pasa al color oscuro de la marca para que se lea sobre la píldora.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
+   "sort": 50,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.5,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "hold_gap_ms": 450,
+    "max_cps": 17,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.14
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "scrim",
+     "scale": 1,
+     "box": {
+      "color": "accent",
+      "opacity": 1,
+      "radius_em": 0.22,
+      "pad_x_em": 0.14,
+      "pad_y_em": 0.02
+     }
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.2
+        },
+        {
+         "t": 150,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_word_pop",
+   "layer": "caption",
+   "name": "Palabra que salta al sonar",
+   "description": "El grupo entra suave y cada palabra da un salto corto de escala al empezar a sonar, en el color de acento.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
+   "sort": 60,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.5,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "hold_gap_ms": 450,
+    "max_cps": 17,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.2
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1,
+     "pop": {
+      "scale": 1.15,
+      "ms": 200
+     }
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 120,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_minimal",
+   "layer": "caption",
+   "name": "Mínimo en una línea",
+   "description": "Una sola línea de 2–3 palabras, peso normal, sombra suave y sin animación llamativa: para piezas donde habla una persona y el texto no debe distraer.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "group_min": 2,
+    "group_max": 3,
+    "max_gap_ms": 700,
+    "size_pct": 3.2,
+    "min_size_pct": 2.4,
+    "max_lines": 1,
+    "bold": false,
+    "line_height": 1.15,
+    "color": "text",
+    "hold_gap_ms": 450,
+    "max_cps": 17,
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.15,
+     "alpha": 0.6
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 140,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_keywords",
+   "layer": "caption",
+   "name": "Sólo palabras clave en el acento",
+   "description": "Subtítulos en blanco y sólo las palabras clave del guion (`captions.keywords`) en el acento, con un salto al sonar. La evidencia independiente prefiere marcar el 5–15 % de las palabras, no todas.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2 · ronda 2 de vigilancia",
+   "sort": 80,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.5,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "hold_gap_ms": 450,
+    "max_cps": 17,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.2
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1,
+     "mode": "keywords",
+     "pop": {
+      "scale": 1.12,
+      "ms": 200
+     }
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.25
+        },
+        {
+         "t": 160,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
         }
        ]
       }
