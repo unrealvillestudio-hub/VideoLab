@@ -21,6 +21,8 @@ import { prepareTextLayers } from './textprep.mjs';
 import { renderHtmlLayers } from './html/capture.mjs';
 import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline } from './textlayers.mjs';
 import { X264, HOST } from './x264.mjs';
+import { createHash } from 'node:crypto';
+import { soundCues, soundMixArgs, loudnormArgs, soundKeysOf, mixGains } from './sound.mjs';
 
 const run = promisify(execFile);
 const LAB = 'videolab';
@@ -114,6 +116,70 @@ function textLayout(tlr, drawn) {
     engine: drawn.engine, capture: drawn.capture, presets: tlr.presets, frames_sha256: drawn.frames_sha256 ?? null, host: HOST };
 }
 
+/** Sonoridad integrada y pico verdadero (ebur128) del audio de `path`. */
+async function measureLoudness(path) {
+  const { stderr } = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', path, '-af', 'ebur128=peak=true', '-f', 'null', '-'], { maxBuffer: 1 << 26 });
+  const sum = String(stderr).slice(String(stderr).lastIndexOf('Summary:'));
+  const n = (re) => { const m = sum.match(re); return m ? Number(m[1]) : null; };
+  return { lufs: n(/I:\s+(-?[\d.]+) LUFS/), true_peak_db: n(/Peak:\s+(-?[\d.]+) dBFS/) };
+}
+
+/**
+ * CAPA DE SONIDO (contrato v1.9.0, sonido F1). Sobre el MP4 ya dibujado: pide a VoiceLab (por su `api_endpoint`, modo
+ * `sound`) los archivos que nombra el preset, verifica el sha256 de cada uno, arma la hoja de entradas desde la MISMA
+ * escena del texto (`soundCues`), lleva la voz a la referencia del preset, mezcla cama con ducking y efectos, fija la
+ * sonoridad final de la plataforma (dos pasadas) y remplaza el audio sin tocar el video (`-c:v copy`).
+ * Un preset desconocido o retirado es un error del pedido. Si falla lo demás (VoiceLab, una huella, ffmpeg), la pieza
+ * sale con su audio original y el aviso `SOUND_FALLBACK`: el sonido no tumba un video que ya está bien dibujado.
+ */
+async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline, video, work }) {
+  const rows = await S.select(cfg, `videolab_sound_presets?preset_key=eq.${enc(sound.preset_key)}&active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=preset_key,brand_id,status,spec`);
+  const row = rows.find((r) => r.brand_id === brandId) ?? rows.find((r) => r.brand_id == null);
+  if (!row || row.status === 'retired') throw new RenderError('VIDEOLAB_BAD_REQUEST', `el preset de sonido ${sound.preset_key} no existe o no está activo`);
+  const spec = row.spec;
+  try {
+    const [vl] = await S.select(cfg, `lab_configs?lab_key=eq.voicelab&select=api_endpoint`);
+    if (!vl?.api_endpoint) throw new Error('lab_configs no tiene el api_endpoint de voicelab');
+    const keys = soundKeysOf(spec);
+    const res = await fetch(`${vl.api_endpoint.replace(/\/+$/, '')}/api/execute`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ brandId, stage: { mode: 'sound' }, params: { sounds: keys }, parent_job_id: jobId }),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(out.sounds)) throw new Error(`VoiceLab ${res.status} ${out.error_label ?? ''} ${String(out.error ?? '').slice(0, 160)}`);
+    const files = {}, lib = {};
+    for (const snd of out.sounds) {
+      const bytes = await S.download(snd.url, `sonido ${snd.key}`);
+      const h = createHash('sha256').update(bytes).digest('hex');
+      if (h !== snd.sha256) throw new Error(`la huella de ${snd.key} no coincide (${h.slice(0, 12)} ≠ ${String(snd.sha256).slice(0, 12)})`);
+      files[snd.key] = join(work, `${snd.key}.wav`);
+      writeFileSync(files[snd.key], bytes);
+      lib[snd.key] = snd;
+    }
+    const probe = await ffprobe(video);
+    const durationS = Number(probe.format.duration);
+    const voice = await measureLoudness(video);
+    const gains = mixGains({ spec, voiceLufs: voice.lufs, bedLufs: lib[spec?.bed?.sound]?.loudness_lufs });
+    const cues = soundCues(tlr.scene ?? { blocks: tlr.blocks }, timeline, spec);
+    const mix = join(work, 'mezcla.wav'), master = join(work, 'master.wav'), withSound = join(work, 'con_sonido.mp4');
+    await run('ffmpeg', soundMixArgs({ video, durationS, preset: spec, cues, files, out: mix, gains }), { maxBuffer: 1 << 26 });
+    const target = spec.master_by_platform?.[sound.platform ?? platform] ?? spec.master_by_platform?.default ?? {};
+    const { stderr } = await run('ffmpeg', loudnormArgs({ input: mix, target }), { maxBuffer: 1 << 26 });
+    const txt = String(stderr);
+    const measured = JSON.parse(txt.slice(txt.lastIndexOf('{'), txt.lastIndexOf('}') + 1));
+    await run('ffmpeg', loudnormArgs({ input: mix, target, measured, out: master }), { maxBuffer: 1 << 26 });
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-i', master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
+      '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', '-shortest', withSound]);
+    copyFileSync(withSound, video);
+    const final = await measureLoudness(video);
+    return { warnings: [], sound: { preset_key: row.preset_key, platform: sound.platform ?? platform, cues: cues.length, sounds: keys,
+      voice_lufs: voice.lufs, gains, master: final, audio_sha256: createHash('sha256').update(readFileSync(master)).digest('hex') } };
+  } catch (e) {
+    return { warnings: [`SOUND_FALLBACK: la capa de sonido falló (${String(e?.message ?? e).slice(0, 200)}); la pieza sale con su audio original`],
+      sound: { preset_key: row.preset_key, applied: false } };
+  }
+}
+
 /**
  * Modo `text_layers` (contrato v1.3.0, §4 ter.1): SÓLO texto sobre el video limpio de la pieza. No llama a HeyGen, Veo
  * ni ImageLab. Baja `previousOutputs.base_video`, dibuja las capas, valida con ffprobe, sube MP4 y portada con el mismo
@@ -139,6 +205,11 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
   const tlr = await prepareTextLayers({ cfg, brandId, params, profile, canvas, textLayers: prev.text_layers, timeline: prev.timeline ?? null, durationMs, work });
   const outPath = join(work, 'out.mp4');
   const drawn = await drawTextLayers({ tlr, input: inPath, out: outPath, work });
+  // Capa de sonido (v1.9.0): sólo si el pedido la trae y no está apagada.
+  const snd = prev.text_layers?.sound && prev.text_layers.sound.enabled !== false
+    ? await soundLayer({ cfg, jobId, brandId, sound: prev.text_layers.sound, platform: params.platform, tlr, timeline: prev.timeline ?? null, video: outPath, work })
+    : null;
+  if (snd) drawn.warnings.push(...snd.warnings);
   const bytes = statSync(outPath).size;
   const probe = await ffprobe(outPath);
   const fallas = validateOutput(probe, canvas, bytes);
@@ -157,7 +228,7 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
       duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes },
     clean_video: { url: prev.base_video.url },
     text_layers: prev.text_layers,
-    text_layout: textLayout(tlr, drawn),
+    text_layout: { ...textLayout(tlr, drawn), ...(snd ? { sound: snd.sound } : {}) },
     provider: 'unrlvl', model_id: RATE_MODEL,
     cost_usd: cost, ledger_ids: [ledgerId].filter(Boolean),
   };

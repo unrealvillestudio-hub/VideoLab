@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { soundCues, soundMixArgs, loudnormArgs } from '../src/sound.mjs';
+import { soundCues, soundMixArgs, loudnormArgs, mixGains } from '../src/sound.mjs';
 
 const a = process.argv.slice(2);
 const opt = (k, d) => { const i = a.indexOf(`--${k}`); return i >= 0 ? a[i + 1] : d; };
@@ -19,7 +19,8 @@ if (!outDir) { console.error('uso: sonido_f0.mjs <scene.json> <timeline.json> <v
 mkdirSync(outDir, { recursive: true });
 const scene = JSON.parse(readFileSync(scenePath, 'utf8'));
 const timeline = JSON.parse(readFileSync(timelinePath, 'utf8'));
-const preset = JSON.parse(readFileSync(presetsPath, 'utf8')).rows[0].spec;
+const rowsP = JSON.parse(readFileSync(presetsPath, 'utf8')).rows;
+const preset = (rowsP.find((r) => r.preset_key === opt('preset')) ?? rowsP[0]).spec;
 const lib = JSON.parse(readFileSync(join(libDir, 'manifest.json'), 'utf8'));
 const files = Object.fromEntries(lib.sounds.map((s) => [s.key, join(libDir, s.file)]));
 const target = preset.master_by_platform[opt('platform', 'default')] ?? preset.master_by_platform.default;
@@ -31,7 +32,7 @@ const sha = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 function once(k) {
   const t0 = performance.now();
   const mix = join(outDir, `mezcla${k}.wav`), norm = join(outDir, `master${k}.wav`), mp4 = join(outDir, `con_sonido${k}.mp4`);
-  execFileSync('ffmpeg', soundMixArgs({ video, durationS, preset, cues, files, out: mix }));
+  execFileSync('ffmpeg', soundMixArgs({ video, durationS, preset, cues, files, out: mix, gains }));
   // Primera pasada de loudnorm: sólo mide (el informe sale por stderr).
   const txt = spawnSync('ffmpeg', loudnormArgs({ input: mix, target })).stderr.toString();
   const measured = JSON.parse(txt.slice(txt.lastIndexOf('{'), txt.lastIndexOf('}') + 1));
@@ -47,6 +48,8 @@ function loudness(p) {
   return { I: Number(sum.match(/I:\s+(-?[\d.]+) LUFS/)[1]), TP: Number(sum.match(/Peak:\s+(-?[\d.]+) dBFS/)[1]), LRA: Number(sum.match(/LRA:\s+(-?[\d.]+) LU/)[1]) };
 }
 const runs = Number(opt('runs', 2));
+var gains;
+gains = mixGains({ spec: preset, voiceLufs: loudness(video).I, bedLufs: lib.sounds.find((s) => s.key === preset.bed?.sound)?.loudness_lufs });
 const r = Array.from({ length: runs }, (_, k) => once(k + 1));
 const res = {
   cues: cues.length, por_funcion: cues.reduce((m, c) => ({ ...m, [c.cue.split(':')[0]]: (m[c.cue.split(':')[0]] ?? 0) + 1 }), {}),

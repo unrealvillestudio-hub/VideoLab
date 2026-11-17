@@ -1,4 +1,46 @@
-# MOTOR DE SONIDO — F0 (prueba medida, sin producción) · 2026-11-17
+# MOTOR DE SONIDO — F1 (en el job) y F0 (prueba medida) · 2026-11-17
+
+## F1 — la capa de sonido entra en el job (2026-11-17)
+
+**Encargo de Sam:** «sí a la F1 de sonido… supongo que tendremos una buena librería de sonidos y efectos. make me proud!».
+
+- **Librería (VoiceLab#11):** 25 sonidos propios, 19 efectos con variantes por función y 6 camas en bucle sin costura.
+  Están en `voicelab/sound-library/v2/`, y lo publicado es idéntico byte a byte a lo generado (*medido*). Se sirven por
+  el modo `sound`, sin costo.
+- **Datos (`unrlvl-iid-functions#621`):** `voicelab_sound_library` (25 filas) y `videolab_sound_presets` (6 presets, `proposed`):
+  `sound_soft_pulse`, `sound_warm_calm`, `sound_bright_upbeat`, `sound_friendly_marimba`, `sound_tension_numbers` y
+  `sound_lofi_close` (`docs/sound_presets_f1.json`).
+- **Job (este repo, contrato v1.9.0 §4 ter.8):**
+  - `text_layers.sound` activa la capa; VideoLab pide los archivos a VoiceLab y verifica su sha256;
+  - la voz se lleva a la referencia del preset (−20 LUFS) y la cama queda `under_voice_lu` por debajo, según la
+    sonoridad medida de cada archivo;
+  - la sonoridad final es la de la plataforma;
+  - si algo falla, `SOUND_FALLBACK` y el audio original.
+
+**Medido en el banco**, con los 6 presets sobre la pieza de los sofás (job `c739b638`):
+
+| Preset | Sonoridad final | Pico | Cama + efectos (sin voz) | Mismo audio en 2 corridas |
+|---|---|---|---|---|
+| `sound_soft_pulse` | −14,1 LUFS | −1,9 dBTP | −36,7 LUFS | sí |
+| `sound_warm_calm` | −14,1 | −1,8 | −36,4 | sí |
+| `sound_bright_upbeat` | −14,1 | −1,7 | −37,7 | sí |
+| `sound_friendly_marimba` | −14,1 | −1,6 | −36,6 | sí |
+| `sound_tension_numbers` | −14,1 | −1,9 | −36,7 | sí |
+| `sound_lofi_close` | −14,1 | −1,5 | −35,2 | sí |
+
+- La voz queda en −20 LUFS en las 6 mezclas, y cama más efectos entre 15 y 17 LU por debajo.
+- La capa añade de 6,3 a 6,8 s por pieza de 58 s.
+- Muestras: `unrlvl-media/videolab/<marca>/sin-pieza/muestras-sonido-f1/<preset>.mp4`.
+
+**Falta** (necesita el sí de Sam):
+- aplicar la migración, mergear VoiceLab#11 y redesplegar el job;
+- medir en Cloud Run con Intel y AMD;
+- los controles en el Orchestrator, que se acuerdan con la sesión B;
+- validar los presets de oído.
+
+---
+
+# F0 (prueba medida, sin producción) · 2026-11-17
 
 **Encargo.** Sam, transmitido por la sesión «A - [VideoLab] Launch»: «implementemos la parte de sonido».
 
