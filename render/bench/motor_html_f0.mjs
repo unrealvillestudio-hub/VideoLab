@@ -2,7 +2,7 @@
 //
 // Uso:
 //   node render/bench/motor_html_f0.mjs <fixture.json> <video_limpio.mp4> <dir_salida> [--runs 2] [--presets docs/html_presets_f0.json]
-//     [--swap hook=hook_char_rise,cta=cta_card_spring,key_titles.0=key_title_counter] [--ass] [--frames N]
+//     [--swap hook=hook_char_rise,cta=cta_card_spring,key_titles.0=key_title_counter] [--ass] [--frames N] [--mode beginframe|screenshot]
 //
 // El fixture lleva lo mismo que lee prepareTextLayers en el job (text_layers, timeline, presets, paleta, tipografía,
 // tokens, zona segura, lienzo, duración) más `brandId`. El banco no conoce ninguna marca: todo llega por el fixture.
@@ -11,7 +11,6 @@
 import { readFileSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { buildScene } from '../src/html/scene.mjs';
 import { renderHtmlLayers } from '../src/html/capture.mjs';
 import { buildTextLayers, ttfMeasure, estimateMeasure, textLayersArgs, fontFacesNeeded, faceMeasure } from '../src/textlayers.mjs';
@@ -70,15 +69,13 @@ const sceneMs = Math.round(performance.now() - tScene);
 const usedFonts = fonts.filter((f) => scene.families.includes(f.family));
 writeFileSync(join(outDir, 'scene.json'), JSON.stringify({ ...scene, layout: scene.layout }, null, 1));
 
-const require = createRequire(import.meta.url);
-const { chromium } = require('playwright');
 const runs = Number(opt('runs', 2));
 const frames = opt('frames') ? Number(opt('frames')) : null;
 const result = { fixture: resolve(fixturePath), input: resolve(input), cpus: (await import('node:os')).cpus().length, scene_ms: sceneMs,
   layout: scene.layout, warnings: scene.warnings, runs: [] };
 for (let r = 1; r <= runs; r++) {
   const out = join(outDir, `html_run${r}.mp4`);
-  const res = await renderHtmlLayers({ scene, fonts: usedFonts, input, out, chromium, frames });
+  const res = await renderHtmlLayers({ scene, fonts: usedFonts, input, out, frames, mode: opt('mode', 'beginframe') });
   writeFileSync(join(outDir, `hashes_run${r}.txt`), res.hashes.join('\n') + '\n');
   // Tiempo de captura por tramo: cada bloque (con sus subtítulos debajo) y los tramos sólo con subtítulos.
   const at = (i) => (i * 1000) / scene.fps;
@@ -89,9 +86,9 @@ for (let r = 1; r <= runs; r++) {
   const solo = res.frameMs.filter(([i]) => !scene.blocks.some((b) => at(i) >= b.start_ms && at(i) < b.end_ms));
   per.push({ layer: 'solo_subtitulos', frames: solo.length, capture_ms: Math.round(solo.reduce((s, [, ms]) => s + ms, 0)) });
   const mp4sha = execFileSync('sha256sum', [out]).toString().split(' ')[0];
-  result.runs.push({ run: r, ...res.timings, frames: res.frames, captured: res.captured, frames_digest: res.digest, mp4_sha256: mp4sha,
+  result.runs.push({ run: r, mode: res.mode, warnings: res.warnings, ...res.timings, frames: res.frames, captured: res.captured, frames_digest: res.digest, mp4_sha256: mp4sha,
     mp4_bytes: statSync(out).size, per_tramo: per, ms_por_fotograma: Math.round(res.frameMs.reduce((s, [, ms]) => s + ms, 0) / Math.max(1, res.frameMs.length)), fit: r === 1 ? res.fit : undefined, spans: r === 1 ? res.spans : undefined });
-  console.log(`run ${r}: total ${res.timings.total_ms} ms · captura ${res.timings.capture_ms} ms · ${res.captured}/${res.frames} fotogramas · huella ${res.digest.slice(0, 16)} · mp4 ${mp4sha.slice(0, 16)}`);
+  console.log(`run ${r} [${res.mode}]: total ${res.timings.total_ms} ms · captura ${res.timings.capture_ms} ms · ${res.captured}/${res.frames} fotogramas · huella ${res.digest.slice(0, 16)} · mp4 ${mp4sha.slice(0, 16)}`);
 }
 if (runs >= 2) {
   const a = readFileSync(join(outDir, 'hashes_run1.txt'), 'utf8').split('\n'), b = readFileSync(join(outDir, 'hashes_run2.txt'), 'utf8').split('\n');

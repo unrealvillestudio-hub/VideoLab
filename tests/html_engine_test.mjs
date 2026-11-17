@@ -70,6 +70,32 @@ caso('curvas: todas valen 0 en 0 y 1 en 1; la Bézier de CSS «ease» (0.25,0.1,
   assert.throws(() => easeFn('rebote_magico'), /curva desconocida/);
 });
 
+caso('resorte (F1): 0 en 0 y 1 en 1; con poca amortiguación pasa de 1 (rebota); crítico o sobreamortiguado, nunca', () => {
+  const max = (f) => { let m = 0; for (let i = 0; i <= 2000; i++) m = Math.max(m, f(i / 2000)); return m; };
+  for (const s of ['spring:300,10,1', 'spring:300,40,1', 'spring:100,20', 'spring:170,26,1']) {
+    const f = easeFn(s);
+    assert.equal(f(0), 0, s); assert.equal(f(1), 1, s);
+    assert.ok(Math.abs(f(0.999) - 1) < 0.01, `${s} no se asentó al final del tramo: ${f(0.999)}`);
+  }
+  assert.ok(max(easeFn('spring:300,10,1')) > 1.2, 'con amortiguación 10 debe rebotar');
+  assert.ok(max(easeFn('spring:300,40,1')) <= 1 + 1e-9, 'con amortiguación 40 no debe rebotar');
+  assert.ok(max(easeFn('spring:100,20,1')) <= 1 + 1e-9, 'crítico: no rebota');
+  assert.equal(easeFn('spring:300,10,1')(0.37), easeFn('spring:300,10,1')(0.37));
+  assert.throws(() => easeFn('spring:300'), /spring inválido/);
+  assert.throws(() => easeFn('spring:0,10,1'), /spring inválido/);
+  validateMotion({ tracks: [{ target: 'block', keys: [{ t: 0, y_em: 1 }, { t: 600, y_em: 0, ease: 'spring:300,12,1' }] }] });
+});
+
+caso('el núcleo que importa la vista previa (ease, keyframes, runtime) no depende de Node ni de nada fuera de sí', () => {
+  const permitido = { 'ease.mjs': [], 'keyframes.mjs': ['./ease.mjs'], 'runtime.mjs': ['./keyframes.mjs'] };
+  for (const [f, deps] of Object.entries(permitido)) {
+    const src = readFileSync(join(RAIZ, 'render/src/html', f), 'utf8');
+    const imports = [...src.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+    assert.deepEqual(imports, deps, `${f} importa ${imports.join(', ')}`);
+    assert.ok(!/\b(process|Buffer|require)\b[.(]/.test(src.replace(/\/\/.*$/gm, '')), `${f} usa algo de Node`);
+  }
+});
+
 caso('propAt: antes de la primera clave, la primera; entre claves, la curva de la clave de llegada; después, la última', () => {
   const keys = [{ t: 100, opacity: 0 }, { t: 300, opacity: 1, ease: 'linear' }, { t: 500, y_em: 2 }];
   assert.equal(propAt(keys, 'opacity', 0), 0);
@@ -198,30 +224,92 @@ caso('los bancos de render/bench importan sólo nombres que existen en render/sr
   }
 });
 
-// DETERMINISMO con navegador real: dos capturas de la misma escena, misma huella por fotograma.
+// DETERMINISMO con navegador real (chrome-headless-shell por CDP crudo, F1).
+//  1) dos capturas de la misma escena dan la misma huella en cada fotograma;
+//  2) beginFrame y captureScreenshot dan EL MISMO PÍXEL (vigilancia R1.1): el respaldo no cambia el video.
 const FONT = ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].find(existsSync);
-let chromium = null;
-try { chromium = createRequire(import.meta.url)('playwright').chromium; } catch { /* sin Playwright */ }
-if (chromium && FONT) {
+const { findHeadlessShell } = await import('../render/src/html/cdp.mjs');
+const SHELL = findHeadlessShell();
+if (SHELL && FONT) {
+  const { renderHtmlLayers } = await import('../render/src/html/capture.mjs');
+  const typo = [{ role: 'display', font_family: 'Prueba Display' }, { role: 'body', font_family: 'Prueba Texto' }];
+  const sc = buildScene(args({ typography: typo }));
+  const bytes = readFileSync(FONT);
+  const fonts = typo.map((t) => ({ family: t.font_family, bytes, format: 'truetype' }));
+  // Fotogramas con texto en movimiento: entrada del gancho, contador del título y brillo del CTA.
+  const pick = [3, 9, 15, 90, 100, 140, 160, 175];
+  const run = async (mode) => {
+    const hs = [];
+    const r = await renderHtmlLayers({ scene: sc, fonts, browserPath: SHELL, mode, encode: false, frames: 176,
+      onFrame: (i, png) => { if (pick.includes(i)) hs.push(require_hash(png)); } });
+    return { hs, mode: r.mode, warnings: r.warnings };
+  };
   caso('determinismo: dos capturas de la misma escena dan la misma huella en cada fotograma', async () => {
-    const { renderHtmlLayers } = await import('../render/src/html/capture.mjs');
-    const typo = [{ role: 'display', font_family: 'Prueba Display' }, { role: 'body', font_family: 'Prueba Texto' }];
-    const s = buildScene(args({ typography: typo }));
-    const bytes = readFileSync(FONT);
-    const fonts = typo.map((t) => ({ family: t.font_family, bytes, format: 'truetype' }));
-    // Fotogramas con texto en movimiento: entrada del gancho, contador del título y brillo del CTA.
-    const pick = [3, 9, 15, 90, 100, 140, 160, 175];
-    const run = async () => {
-      const hs = [];
-      await renderHtmlLayers({ scene: s, fonts, chromium, encode: false, frames: 176,
-        onFrame: (i, png) => { if (pick.includes(i)) hs.push(png.toString('base64').length + ':' + require_hash(png)); } });
-      return hs;
-    };
-    const a = await run(), b = await run();
-    assert.equal(a.length, pick.length);
-    assert.deepEqual(a, b);
+    const a = await run('beginframe'), b = await run('beginframe');
+    assert.equal(a.mode, 'beginframe', `capturó en ${a.mode}: ${a.warnings.join(' | ')}`);
+    assert.equal(a.hs.length, pick.length);
+    assert.deepEqual(a.hs, b.hs);
   });
-} else console.log('  --  determinismo con navegador: se salta (sin Playwright o sin fuente local)');
+  caso('beginFrame y captureScreenshot dan el mismo píxel en cada fotograma (el respaldo no cambia el video)', async () => {
+    const a = await run('beginframe'), b = await run('screenshot');
+    assert.equal(b.mode, 'screenshot');
+    assert.deepEqual(a.hs, b.hs);
+  });
+  // SIN MEMORIA (F1, 2026-11-16): llegar a un fotograma saltando da el mismo píxel que llegar en orden. Sin
+  // --disable-partial-raster el compositor reutilizaba tiles del fotograma anterior y el 175 salía distinto (medido).
+  // La vista previa salta cada vez que el operador mueve el cabezal: sin esta propiedad no sería fiel.
+  caso('sin memoria: saltar a un fotograma da el mismo píxel que llegar a él en orden', async () => {
+    const { scenePage } = await import('../render/src/html/page.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const { mkdtempSync, writeFileSync: wf, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'vl-salto-'));
+    wf(join(dir, 'p.html'), scenePage(sc, fonts));
+    const page = await openPage({ browserPath: SHELL, url: `file://${dir}/p.html`, width: 1080, height: 1920, mode: 'screenshot' });
+    const hs = [];
+    try {
+      await page.evaluate('window.__vl.ready');
+      for (const i of [...pick].reverse()) { await page.evaluate(`window.__vl.seek(${(i * 1000) / 30})`); hs.unshift(require_hash(await page.frame(true))); }
+    } finally { await page.close(); rmSync(dir, { recursive: true, force: true }); }
+    const seq = await run('screenshot');
+    assert.deepEqual(hs, seq.hs);
+  });
+  // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
+  // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
+  caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {
+    const { createServer } = await import('node:http');
+    const { default: engine } = await import('../api/engine.js');
+    const { RUNTIME_VERSION } = await import('../render/src/html/runtime.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const faces = fonts.map((f) => `@font-face{font-family:${JSON.stringify(f.family)};src:url(data:font/ttf;base64,${f.bytes.toString('base64')}) format("truetype");font-weight:400;font-style:normal;font-display:block}`).join('\n');
+    const preview = `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
+html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:1080px;height:1920px}#root{position:absolute;left:0;top:0}
+*{animation:none!important;transition:none!important;caret-color:transparent}</style></head><body><div id="root"></div>
+<script type="module">
+import { mount } from '/engine/${RUNTIME_VERSION}/runtime.mjs';
+const SCENE = ${JSON.stringify(sc).replace(/</g, '\\u003c')};
+const VL = mount(document.getElementById('root'), SCENE, document);
+window.__vl = { seek: VL.seek, check: VL.check, ready: document.fonts.ready.then(() => { VL.prepare(); return SCENE.families.map((f) => document.fonts.check('40px ' + JSON.stringify(f))); }) };
+</script></body></html>`;
+    const srv = createServer((req, res) => {
+      const m = req.url.match(/^\/engine\/([^/]+)\/([^/?]+)$/);
+      if (m) {
+        // El mismo manejador que publica Vercel, con un `res` mínimo.
+        const out = { code: 200, headers: {}, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.code = c; return this; }, send(b) { res.writeHead(this.code, this.headers); res.end(b); } };
+        return engine({ query: { version: m[1], file: m[2] } }, out);
+      }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(preview);
+    });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const page = await openPage({ browserPath: SHELL, url: `http://127.0.0.1:${srv.address().port}/`, width: 1080, height: 1920, mode: 'screenshot', blockNetwork: false });
+    const hs = [];
+    try {
+      for (const i of pick) { await page.evaluate(`window.__vl.seek(${(i * 1000) / 30})`); hs.push(require_hash(await page.frame(true))); }
+    } finally { await page.close(); srv.close(); }
+    const job = await run('screenshot');
+    assert.deepEqual(hs, job.hs);
+  });
+} else console.log('  --  determinismo con navegador: se salta (sin chrome-headless-shell o sin fuente local)');
 
 import { createHash } from 'node:crypto';
 function require_hash(buf) { return createHash('sha256').update(buf).digest('hex'); }

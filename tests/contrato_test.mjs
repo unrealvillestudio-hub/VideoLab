@@ -78,6 +78,32 @@ caso("marca N+1: ninguna marca ni persona en el contrato", () => {
   assert.deepEqual(nombra(sinCitas), []);
 });
 
+// v1.4.0 — el motor, los estilos en línea, la alineación, la franja y los avisos: lo que dice el JSON es lo que el
+// código acepta (las listas salen de render/src/textlayers.mjs) y está escrito en el documento.
+{
+  const T = await import("../render/src/textlayers.mjs");
+  const tl = c.text_layers;
+  caso("v1.4.0: motores, campos de tramo, alineaciones y modos de franja coinciden con el código y el documento", () => {
+    assert.equal(c.version, "1.4.0");
+    assert.deepEqual(tl.engines, [...T.TEXT_ENGINES]);
+    assert.deepEqual(tl.span_fields, [...T.SPAN_FIELDS]);
+    assert.deepEqual(tl.span_limits, { max_terms: T.SPAN_MAX_TERMS, max_chars: T.SPAN_MAX_CHARS });
+    assert.deepEqual(tl.aligns, [...T.ALIGNS]);
+    assert.deepEqual(tl.identity_modes, [...T.IDENTITY_MODES]);
+    for (const v of [...tl.engines, ...tl.span_fields, ...tl.aligns, ...tl.identity_modes, ...tl.captures, tl.identity_role_legacy_alias]) {
+      assert.ok(md.includes(`\`${v}\``), `el documento no nombra \`${v}\``);
+    }
+  });
+  caso("v1.4.0: cada aviso del JSON está en el documento y lo emite el código", () => {
+    const src = ["render/src/textlayers.mjs", "render/src/main.mjs", "render/src/html/capture.mjs"].map((f) => readFileSync(join(RAIZ, f), "utf8")).join("\n");
+    for (const w of tl.warnings) { assert.ok(md.includes(`\`${w}\``), `documento: ${w}`); assert.ok(src.includes(w), `código: ${w}`); }
+  });
+  caso("v1.4.0: la vista previa del JSON es la del documento", () => {
+    assert.ok(md.includes(tl.preview.endpoint));
+    for (const f of [...tl.preview.fidelity, ...tl.preview.response]) assert.ok(md.includes(f), f);
+  });
+}
+
 caso("el test N+1 caza una marca si alguien la escribe (regresión inyectada)", () => {
   const inyectado = JSON.stringify({ ...c, video_styles: [...c.video_styles, "ugc_Patricia"] });
   assert.deepEqual(nombra(inyectado), ["Patricia"]);

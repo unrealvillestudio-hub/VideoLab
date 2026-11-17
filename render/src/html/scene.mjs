@@ -5,9 +5,10 @@
 // `blocks` (los mismos que van a `text_layout`) son la ENTRADA de este módulo. Aquí sólo se resuelve CÓMO se dibuja cada
 // bloque: líneas, colores, fuentes y pistas de animación, todo desde el dato (preset, paleta, tipografía).
 //
-// F0: la escena se deriva re-midiendo cada bloque con el tamaño que ya fijó la geometría (mismo `measureBlock`, mismas
-// métricas), así que las líneas coinciden con las del dibujo ASS. En F1 conviene que `buildTextLayers` devuelva esta
-// lista directamente, para que haya una sola derivación.
+// F0 derivaba la escena re-midiendo cada bloque; desde F1 la toma de `plan.drawn` (lo que `buildTextLayers` resolvió al
+// dibujar: medida, líneas, palabras con sus tramos de estilo, colores, alineación y posición por tramo de toma), así que
+// hay una sola derivación y el ASS y el HTML dibujan lo mismo. Los subtítulos siguen midiéndose aquí con la misma
+// función que el dibujo ASS.
 //
 // Test de la marca N+1: aquí no hay ninguna marca. Colores, fuentes, textos y animaciones llegan como dato.
 
@@ -20,7 +21,6 @@ import { validateMotion, tracksFromEntry } from './keyframes.mjs';
 const num = (v, d) => (v != null && Number.isFinite(Number(v)) ? Number(v) : d);
 const obj = (v) => v != null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
-const norm = (s) => String(s).toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 // Un número dentro de una palabra («$1.67», «$200», «20%»): prefijo, cifra con sus separadores y sufijo.
 const NUMBER = /^(\D*?)(\d[\d.,]*\d|\d)(\D*)$/u;
 
@@ -46,59 +46,43 @@ export function numberToken(word) {
  * tal cual (lo que va a `text_layout.blocks`). PURO.
  */
 export function buildScene({ textLayers: tl, timeline = null, presets, brandId, palette, typography, tokens = null,
-  safeZone, canvas, durationMs, measure = estimateMeasure, fps = 30 }) {
+  safeZone, canvas, durationMs, measure = estimateMeasure, faceAvail = null, fps = 30, fonts = [] }) {
   const plan = buildTextLayers({ textLayers: tl, timeline, presets, brandId, palette, typography, tokens, safeZone, canvas,
-    durationMs, measure });
+    durationMs, measure, faceAvail });
   const { height: H } = canvas;
   const safe = plan.safe;
   const slots = colorSlots({ tokens, textLayers: tl });
   const color = (ref) => resolveColor(ref, { slots, palette });
   const familyOf = (spec, layer) => (typography ?? []).find((t) => t?.role === (spec.font_role ?? DEFAULT_FONT_ROLE[layer]))?.font_family;
 
-  // Las fuentes de las capas, en el orden en que buildTextLayers las colocó (hook, títulos, cta, roles).
-  const sources = [];
-  if (tl.hook) sources.push({ layer: 'hook', item: tl.hook, text: tl.hook.text, emphasis: tl.hook.emphasis ?? [] });
-  for (const k of tl.key_titles ?? []) sources.push({ layer: 'key_title', item: k, text: k.text, emphasis: k.emphasis ?? [] });
-  if (tl.cta) sources.push({ layer: 'cta', item: tl.cta, text: tl.cta.text, emphasis: tl.cta.emphasis ?? [] });
-  for (const r of tl.roles ?? []) if (r.show !== false) sources.push({ layer: 'role', item: r, text: r.text, emphasis: [] });
-
   const placed = plan.blocks.filter((b) => b.layer !== 'caption_band');
-  if (placed.length !== sources.length) throw new Error(`escena: ${placed.length} bloques colocados para ${sources.length} capas`);
 
+  // F1: la escena toma lo que `buildTextLayers` ya resolvió al dibujar (`plan.drawn`: medida, líneas, palabras con sus
+  // tramos de estilo, colores y alineación). Una sola derivación: el motor HTML y el ASS dibujan lo mismo.
+  if (plan.drawn.length !== placed.length) throw new Error(`escena: ${plan.drawn.length} bloques dibujados para ${placed.length} colocados`);
   const blocks = placed.map((b, i) => {
-    const src = sources[i];
-    if (src.layer !== b.layer) throw new Error(`escena: el bloque ${i} es ${b.layer} y la capa es ${src.layer}`);
-    const row = resolveTextPreset(presets, src.item.preset_key, brandId, src.layer);
-    const zoom = src.item.place?.zoom != null ? Number(src.item.place.zoom) : 1;
-    const spec0 = zoomSpec(row.spec, zoom);
-    const isRole = src.layer === 'role';
-    const text = isRole && str(spec0.split_on)
-      ? String(src.text).split(spec0.split_on).map((s) => s.trim()).filter(Boolean).join('\n') : src.text;
-    const spec = isRole ? { max_lines: str(spec0.split_on) ? 4 : 2, ...spec0 } : spec0;
-    const fam = familyOf(spec, src.layer);
-    const maxW = safe.w * num(spec.max_width_pct, isRole ? 80 : 100) / 100;
-    // Re-medir AL TAMAÑO QUE FIJÓ LA GEOMETRÍA (size_px del bloque): mismas líneas que el dibujo ASS.
-    const sizePct = (b.size_px / H) * 100;
-    const m = measureBlock({ text, spec: { ...spec, size_pct: sizePct, min_size_pct: sizePct }, layer: src.layer, canvas, maxW, measure, family: fam });
-    if (m.px !== b.size_px) throw new Error(`escena: ${b.layer} se re-midió a ${m.px} px y la geometría dice ${b.size_px}`);
-    const align = isRole ? 'left' : (spec.align === 'left' ? 'left' : 'center');
-    const emph = new Set(src.emphasis.flatMap((e) => String(e).split(/\s+/)).map(norm).filter(Boolean));
+    const d = plan.drawn[i];
+    if (d.layer !== b.layer || d.preset_key !== b.preset_key) throw new Error(`escena: el bloque ${i} es ${b.layer} y lo dibujado es ${d.layer}`);
+    const { spec, m } = d;
     const motion = obj(spec.motion) ? spec.motion : null;
-    validateMotion(motion, `${row.preset_key}.motion`);
+    validateMotion(motion, `${d.preset_key}.motion`);
     const tracks = motion ? motion.tracks : tracksFromEntry(spec, { canvasHeight: H, px: m.px });
-    const textHex = color(spec.color ?? (isRole ? 'text_body' : 'text'));
     return {
-      id: `b${i}`, layer: b.layer, preset_key: row.preset_key, placed: b.placed ?? 'auto',
-      start_ms: b.start_ms, end_ms: b.end_ms, rect: b.rect,
-      family: fam, bold: m.bold, px: m.px, lh: m.lh, align,
+      id: `b${i}`, layer: b.layer, preset_key: d.preset_key, placed: b.placed ?? 'auto',
+      start_ms: b.start_ms, end_ms: b.end_ms, rect: b.rect, ...(b.segments ? { segments: b.segments, move_ms: b.move_ms, move_ease: b.move_ease } : {}),
+      family: d.family, bold: m.bold, px: m.px, lh: m.lh, align: d.align,
       pad: { x: m.padX, y: m.padY }, ext: m.ext,
-      lines: m.lines.map((line, li) => ({
+      lines: d.words.map((ws, li) => ({
         width: m.widths[li],
-        words: line.split(' ').map((w) => ({ text: w, emphasis: emph.has(norm(w)), number: numberToken(w) })),
+        words: ws.map((w) => ({
+          text: w.text, emphasis: w.emphasis, number: numberToken(w.text),
+          runs: w.runs.map((r) => ({ text: r.text, ...(r.italic ? { italic: true } : {}),
+            ...(r.bold !== m.bold ? { weight: r.bold ? 700 : 400 } : {}), ...(r.color ? { color: 'emphasis' } : {}) })),
+        })),
       })),
       colors: {
-        text: textHex,
-        emphasis: color(spec.emphasis_color ?? 'accent'),
+        text: d.textHex,
+        emphasis: d.emphasisHex,
         outline: obj(spec.outline) ? color(spec.outline.color ?? '#000000') : null,
         shadow: obj(spec.shadow) ? color(spec.shadow.color ?? '#000000') : null,
         box: obj(spec.box) ? color(spec.box.color ?? 'scrim') : null,
@@ -113,7 +97,7 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
       sheen: obj(motion?.sheen) ? { width_pct: num(motion.sheen.width_pct, 30), opacity: num(motion.sheen.opacity, 0.35) } : null,
       // Subrayado de énfasis (sólo con `motion.mark`): alto y separación de la base en em del bloque.
       mark: obj(motion?.mark) ? { height: Math.max(2, Math.round(m.px * num(motion.mark.height_em, 0.12))), offset: Math.round(m.px * num(motion.mark.offset_em, 0.08)) } : null,
-      uppercase: spec.uppercase === true,
+      uppercase: false,          // las palabras ya llegan con la caja de presentación
       tracks,
     };
   });
@@ -161,8 +145,10 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
   }
 
   return {
-    canvas, fps, durationMs, safe, families: plan.families, blocks, captions,
-    filters: plan.filters, warnings: plan.warnings, layout: plan.blocks,
+    // `fonts`: [{ family, weight, style, url }] — sólo para la vista previa (loadFonts); el capturador las lleva dentro.
+    canvas, fps, durationMs, safe, families: plan.families, fonts, blocks, captions,
+    // La franja la dibuja la página (y la vista previa): no va como drawbox de ffmpeg en el motor HTML.
+    strip: plan.strip, filters: [], warnings: plan.warnings, layout: plan.blocks,
   };
 }
 

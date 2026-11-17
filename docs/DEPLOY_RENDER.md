@@ -24,4 +24,10 @@ gcloud run jobs deploy videolab-render --image $R-docker.pkg.dev/$P/videolab/ren
 gcloud run jobs execute videolab-render --region $R --project=$P --update-env-vars JOB_ID=<uuid de lab_jobs> --wait
 ```
 
+**Motor HTML (v1.4.0, 2026-11-16).** La imagen trae `chrome-headless-shell` fijado al build 1243 (Playwright 1.63.0,
+Chrome 153.0.8010.12): el mismo con el que se midió el motor. El `RUN` termina con `ls` del binario, así un build que no
+lo baja falla en Cloud Build y no llega al job. Si el binario faltara en ejecución, el job dibuja con ASS y la salida lo
+dice (`TEXT_ENGINE_FALLBACK`). Antes de dar por bueno un despliegue: un job real con un preset `html` y
+`text_layout.engine = 'html'`, `capture = 'beginframe'`.
+
 **Costo:** sólo por consumo (US$ 0,000044 por segundo de render, `ops_lab_rates`); sin tarifa fija.

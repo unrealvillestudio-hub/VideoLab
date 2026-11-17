@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "date": "2026-11-16",
   "lab": "videolab",
   "transport": {
@@ -200,7 +200,72 @@
     "seed": "docs/text_presets_seed.json",
     "role_max_entry_ms": 350,
     "role_caption_margin_pct": 2,
-    "output": "{ mode, video, clean_video: { url }, text_layers, text_layout: { canal, metrics, blocks }, provider, model_id, cost_usd, ledger_ids }",
-    "conversation_output": "clean_video: { url, storage_path }, timeline: { words: [{ text, start_ms, end_ms, person_id }], turns: [{ turn, seat, person_id, start_ms, end_ms }], turns_without_words }, text_layers, text_layout"
+    "output": "{ mode, video, clean_video: { url }, text_layers, text_layout: { canal, metrics, blocks, warnings, engine, capture, presets }, provider, model_id, cost_usd, ledger_ids }",
+    "conversation_output": "clean_video: { url, storage_path }, timeline: { words: [{ text, start_ms, end_ms, person_id }], turns: [{ turn, seat, person_id, start_ms, end_ms }], turns_without_words }, text_layers, text_layout",
+    "engines": [
+      "ass",
+      "html"
+    ],
+    "default_engine": "ass",
+    "span_fields": [
+      "emphasis",
+      "italic_spans",
+      "bold_spans",
+      "color_spans"
+    ],
+    "span_limits": {
+      "max_terms": 3,
+      "max_chars": 60
+    },
+    "aligns": [
+      "left",
+      "center",
+      "right"
+    ],
+    "identity_modes": [
+      "none",
+      "edge_left",
+      "edge_right",
+      "edge_bottom"
+    ],
+    "identity_role_legacy_alias": "strip_role",
+    "captures": [
+      "beginframe",
+      "screenshot"
+    ],
+    "warnings": [
+      "TEXT_ENGINE_FALLBACK",
+      "TEXT_CAPTURE_FALLBACK",
+      "TEXT_SPAN_NOT_FOUND",
+      "TEXT_ITALIC_SYNTHESIZED",
+      "TEXT_BOLD_UNAVAILABLE",
+      "TEXT_EMPHASIS_ROLE_UNKNOWN",
+      "TEXT_OVER_FACE",
+      "TEXT_PLACE_CLAMPED",
+      "TEXT_PLACED_OVER_FACE",
+      "TEXT_PLACED_OVERLAP"
+    ],
+    "preview": {
+      "endpoint": "POST /api/text-scene",
+      "request_required": [
+        "brandId",
+        "params",
+        "previousOutputs",
+        "duration_ms"
+      ],
+      "response": [
+        "status",
+        "engine",
+        "fidelity",
+        "runtime_url",
+        "scene",
+        "text_layout"
+      ],
+      "fidelity": [
+        "same_engine",
+        "approximate"
+      ],
+      "runtime": "GET /engine/<versión>/<módulo> — sólo ease.mjs, keyframes.mjs, runtime.mjs"
+    }
   }
 }
