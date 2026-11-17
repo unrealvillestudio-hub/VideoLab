@@ -18,6 +18,27 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 
 ---
 
+## 0 bis. F2 — catálogo de 5 estilos por capa, subtítulos y dos defectos (2026-11-17)
+
+**Objetivo validado por Sam:** 5 estilos `html` por capa, rotados por el carril entre generaciones, más tope de lectura en
+subtítulos y medida del impacto.
+
+- **Catálogo:** 22 estilos nuevos en `docs/html_presets_f2.json` que, con los 3 de la F0, suman 5 por capa. Cada uno
+  aguanta el peor caso del carril (`tests/textlayers_test.mjs`) y arma su escena sin mover la geometría.
+- **Rol:** la regla de ≤ 350 ms y sin rebote se aplica también a `motion` (`roleMotionProblem`).
+- **Subtítulos:** `hold_gap_ms` y `max_cps` con el aviso `TEXT_CAPTION_FAST`, y una sola fuente de tiempos para los dos
+  motores (`captionTimes`).
+- **Paso fijo antes de sembrar estilos: renderizar muestras de la pieza real.** Las muestras encontraron dos defectos que
+  las pruebas no veían (*medido*):
+  1. una familia que sólo se dibujaba en negrita dejaba sin cargar su cara regular, y la comprobación de fuentes tumbaba
+     el motor (caída a ASS). Ahora se cargan todas las caras declaradas;
+  2. el texto no se recortaba a la zona segura (ASS sí, con `\clip`). Una entrada a 1,25× tapaba la franja. Ahora la capa
+     del texto lleva `clip-path` a la zona segura. Runtime 1.5.0.
+- **Rotación:** pendiente de la decisión de Sam sobre dónde vive (propuesta: VideoLab sugiere el estilo usado hace más
+  tiempo, por marca y capa).
+- **Medida del impacto: bloqueada.** `content.content_performance` tiene 0 filas y no tiene retención ni visionado
+  (*medido* 2026-11-17).
+
 ## 0. F1 — lo que cambió y lo que se midió (2026-11-17)
 
 **Qué entró** (contrato v1.4.0, §4 ter.5 y §4 ter.6):
