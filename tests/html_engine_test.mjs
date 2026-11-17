@@ -359,6 +359,39 @@ if (SHELL && FONT) {
     const sx = Math.floor(s3.strip.x + s3.strip.w / 2);
     assert.equal(Buffer.from(px(pngs[1], sx, y)).toString('hex'), s3.strip.color.slice(1).toLowerCase() + 'ff', 'la franja sigue intacta');
   });
+  // SUBTÍTULOS DE MERCADO (F2, ronda 2): caja en la palabra activa, aparición al decirse, salto al sonar y sólo palabras
+  // clave. Se comprueba en un navegador real leyendo el DOM después de `seek` (el runtime es el mismo del job).
+  caso('subtítulos de mercado: caja en la palabra activa, aparición al decirse, salto al sonar y sólo palabras clave', async () => {
+    const { scenePage } = await import('../render/src/html/page.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const { mkdtempSync, writeFileSync: wf, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const probe = async (preset, extra = {}) => {
+      const tl = { captions: { enabled: true, preset_key: preset, accent_role: 'brasa', ...extra } };
+      const s4 = buildScene(args({ typography: typo, durationMs: 3000, textLayers: tl }));
+      const dir = mkdtempSync(join(tmpdir(), 'vl-cap-'));
+      wf(join(dir, 'p.html'), scenePage(s4, fonts));
+      const page = await openPage({ browserPath: SHELL, url: `file://${dir}/p.html`, width: 1080, height: 1920, mode: 'screenshot' });
+      try {
+        await page.evaluate('window.__vl.ready');
+        await page.evaluate('window.__vl.seek(100)');   // suena la 1.ª palabra («Hoy», 0–260 ms); la 2.ª empieza en 300
+        return JSON.parse(await page.evaluate(`JSON.stringify([...document.querySelectorAll('#root span')].filter((x) => x.parentElement.tagName === 'DIV').slice(0, 3).map((x) => ({
+          t: x.firstChild?.textContent, op: x.style.opacity, color: getComputedStyle(x).color, tf: x.style.transform,
+          box: x.querySelector('span') ? x.querySelector('span').style.display : null })))`));
+      } finally { await page.close(); rmSync(dir, { recursive: true, force: true }); }
+    };
+    const box = await probe('caption_html_word_box');
+    assert.equal(box[0].box, 'block', 'la palabra que suena lleva su caja');
+    assert.equal(box[1].box, 'none', 'la que no suena, no');
+    const rev = await probe('caption_html_bold_reveal');
+    assert.notEqual(rev[0].op, '0', 'la palabra dicha se ve');
+    assert.equal(rev[1].op, '0', 'la que aún no se dijo, no');
+    assert.match(rev[0].tf, /scale\(1\.\d+/, 'salta al sonar');
+    const kw = await probe('caption_html_keywords', { keywords: ['cuento'] });
+    // «Hoy» suena pero no es palabra clave: color de texto; «cuento» es clave: en el acento aunque no suene todavía.
+    assert.notEqual(kw[0].color, kw[2].color, JSON.stringify(kw));
+    assert.equal(kw[2].color, 'rgb(255, 136, 0)');
+  });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
   caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {
