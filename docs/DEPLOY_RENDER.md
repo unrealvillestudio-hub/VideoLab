@@ -30,9 +30,14 @@ lo baja falla en Cloud Build y no llega al job. Si el binario faltara en ejecuci
 dice (`TEXT_ENGINE_FALLBACK`). Antes de dar por bueno un despliegue: un job real con un preset `html` y
 `text_layout.engine = 'html'`, `capture = 'beginframe'`.
 
-**Reproducibilidad (2026-11-17).**
+**Reproducibilidad (2026-11-17, ampliada el mismo día).**
 - Cloud Run asigna máquinas con y sin AVX-512, y x264 cambia de salida con AVX-512 (*medido*).
-- Toda codificación lleva `render/src/x264.mjs`: hilos fijos y nivel SSSE3–AVX2.
-- Verificación tras un despliegue: dos ejecuciones del mismo pedido deben dar el mismo sha256.
+- Cloud Run mezcla además **Intel y AMD** en una misma ejecución, y con mbtree x264 da un archivo distinto según el
+  fabricante, aunque el nivel esté fijado (*medido*: 10 tareas, 5 y 5; sólo `mbtree=0` igualó las 10).
+- Toda codificación lleva `render/src/x264.mjs`: hilos fijos, nivel SSSE3–AVX2 y `mbtree=0` (+32 % de peso con la misma
+  calidad, medido en 20 s de la pieza real).
+- Verificación tras un despliegue: varias ejecuciones del mismo pedido deben dar el mismo sha256, **y alguna debe caer
+  en cada fabricante**. `text_layout.host` dice en qué máquina corrió cada una, y `text_layout.frames_sha256` separa la
+  captura del resto de la cadena.
 
 **Costo:** sólo por consumo (US$ 0,000044 por segundo de render, `ops_lab_rates`); sin tarifa fija.
