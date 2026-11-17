@@ -57,6 +57,25 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 - **Barrera:** caso «sin memoria» en `tests/html_engine_test.mjs`, visto en rojo sin la bandera.
 - **Límite:** en la vista previa del Orchestrator el navegador del operador no lleva esa bandera. Puede haber esas mismas diferencias mínimas en un tile al mover el cabezal (*deducido*). No afectan a la geometría ni al texto.
 
+**Job real en Cloud Run** (*medido* 2026-11-17, imagen `1dc7ebf`, 2 CPU, 4 GiB).
+
+Material: los presets `html` sembrados (unrlvl-iid-functions#614), el texto de la pieza de prueba sobre su video limpio y ninguna pieza asociada.
+
+| Job | Motor | Captura | Render (reclamado → completo) | Bytes |
+|---|---|---|---|---|
+| `e60c6449` | html | beginframe | **199,6 s** | 13.820.119 |
+| `950bef88` | html | beginframe | 200,3 s | 13.823.709 |
+| `a7b07a8f` (regresión) | ass | — | 101,5 s | 12.938.745 |
+| `380baf1b` (regresión, mismo pedido) | ass | — | — | 12.936.616 |
+
+- **Tope de 300 s:** se cumple, con 200 s para 58,3 s de video. Es más lento que en el sandbox (119,5 s): las vCPU de Cloud Run rinden menos que las del sandbox (*deducido*).
+- **El mismo MP4 dos veces:** **NO se cumplía**, ni con HTML ni con ASS.
+  - El audio era idéntico y el video divergía desde un fotograma hasta el siguiente fotograma clave.
+  - **Causa medida:** x264 da otra salida cuando usa AVX-512. Con SSSE3, SSE4.2, AVX, FMA3 o AVX2 la salida es la misma; con SSE2, otra.
+  - Cloud Run reparte las ejecuciones entre máquinas con y sin AVX-512 (*deducido*).
+  - **Arreglo:** `render/src/x264.mjs` fija los hilos (2) y el nivel (el más alto de SSSE3–AVX2 que tenga la máquina, nunca AVX-512) en **todas** las codificaciones; lo vigila `tests/x264_test.mjs`.
+  - **Efecto en velocidad:** AVX2 fijo fue además más rápido que el AVX-512 por defecto (23,3 s frente a 26,0 s para 20 s de video, 2 CPU, *medido*).
+
 **Pendiente** (en este orden, con el sí de Sam donde aplica):
 1. Merge del PR de código.
 2. PR de dato con los presets `html`.

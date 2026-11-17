@@ -21,6 +21,7 @@
 
 import { RenderError } from './plan.mjs';
 import { spokenWords } from './assemble.mjs';
+import { X264 } from './x264.mjs';
 
 export const TEXT_LAYERS = Object.freeze(['hook', 'role', 'caption', 'key_title', 'cta']);
 export const ENTRIES = Object.freeze(['fade', 'pop', 'pop_words', 'mask', 'type', 'punch', 'slide', 'rise', 'draw']);
@@ -1154,6 +1155,6 @@ export function conversationTimeline({ turns, cast }) {
 export function textLayersArgs({ input, ass, fontsDir = null, filters = [], out }) {
   const esc = (p) => String(p).replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
   const vf = [...filters, `subtitles='${esc(ass)}'${fontsDir ? `:fontsdir='${esc(fontsDir)}'` : ''}`, 'format=yuv420p'].join(',');
-  return ['-y', '-i', input, '-vf', vf, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30',
+  return ['-y', '-i', input, '-vf', vf, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', ...X264, '-pix_fmt', 'yuv420p', '-r', '30',
     '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k', '-movflags', '+faststart', out];
 }
