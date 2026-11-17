@@ -28,7 +28,8 @@ const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const SEED = JSON.parse(readFileSync(join(RAIZ, 'docs/text_presets_seed.json'), 'utf8')).rows;
 const F0 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f0.json'), 'utf8')).rows;
 const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
-const PRESETS = [...SEED, ...F0, ...F2];
+const F3 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f3.json'), 'utf8')).rows;
+const PRESETS = [...SEED, ...F0, ...F2, ...F3];
 
 let fallos = 0;
 const pendientes = [];
@@ -139,7 +140,26 @@ caso('validateMotion señala el punto exacto del error', () => {
   assert.throws(() => validateMotion({ tracks: [{ target: 'word', keys: [{ t: 0, brillo: 1 }] }] }), /propiedad desconocida/);
   assert.throws(() => validateMotion({ tracks: [{ target: 'box', stagger: { each_ms: 5 }, keys: [{ t: 0 }] }] }), /stagger sólo vale/);
   assert.throws(() => validateMotion({ tracks: [{ target: 'word', keys: [{ t: 10 }, { t: 5 }] }] }), /va hacia atrás/);
-  for (const r of [...F0, ...F2]) validateMotion(r.spec.motion, r.preset_key);
+  for (const r of [...F0, ...F2, ...F3]) validateMotion(r.spec.motion, r.preset_key);
+});
+
+caso('rodillo (motion.roll, contrato v1.8.0): vueltas enteras de 0 a 4 y retraso de 0 a 0,3', () => {
+  const t = [{ target: 'number', keys: [{ t: 0, count: 0 }, { t: 900, count: 1 }] }];
+  validateMotion({ roll: { turns: 2, lag: 0.1 }, tracks: t });
+  assert.throws(() => validateMotion({ roll: { turns: 1.5 }, tracks: t }), /roll\.turns/);
+  assert.throws(() => validateMotion({ roll: { turns: 9 }, tracks: t }), /roll\.turns/);
+  assert.throws(() => validateMotion({ roll: { lag: 0.6 }, tracks: t }), /roll\.lag/);
+  assert.throws(() => validateMotion({ roll: 'sí', tracks: t }), /roll debe ser un objeto/);
+});
+
+caso('catálogo F3: el rodillo es un título clave proposed y de sistema, y arma su escena sin mover la geometría', () => {
+  assert.deepEqual(F3.map((r) => [r.preset_key, r.layer, r.status, r.brand_id, r.spec.engine]), [['key_title_odometer', 'key_title', 'proposed', null, 'html']]);
+  assert.equal(new Set([...SEED, ...F0, ...F2, ...F3].map((r) => r.preset_key)).size, SEED.length + F0.length + F2.length + F3.length, 'clave repetida');
+  const tl = TL(); tl.key_titles[0].preset_key = 'key_title_odometer';
+  const a = args({ textLayers: tl });
+  const s = buildScene(a);
+  assert.deepEqual(s.layout, T.buildTextLayers(a).blocks);
+  assert.deepEqual(s.blocks.find((b) => b.preset_key === 'key_title_odometer').roll, { turns: 1, lag: 0.12 });
 });
 
 caso('cada entrada del contrato (§4 ter.3) se traduce a pistas válidas', () => {
@@ -236,6 +256,7 @@ caso('test N+1: el código del motor no nombra ninguna marca (sin comentarios)',
   }
   assert.ok(!marcas.test(JSON.stringify(F0)), 'docs/html_presets_f0.json nombra una marca');
   assert.ok(!marcas.test(JSON.stringify(F2)), 'docs/html_presets_f2.json nombra una marca');
+  assert.ok(!marcas.test(JSON.stringify(F3)), 'docs/html_presets_f3.json nombra una marca');
 });
 
 // 2026-11-16 — el banco de la F0 se rompió en main al retirarse `brandFontFile` (PR #26): ninguna prueba importaba el
@@ -391,6 +412,47 @@ if (SHELL && FONT) {
     // «Hoy» suena pero no es palabra clave: color de texto; «cuento» es clave: en el acento aunque no suene todavía.
     assert.notEqual(kw[0].color, kw[2].color, JSON.stringify(kw));
     assert.equal(kw[2].color, 'rgb(255, 136, 0)');
+  });
+  // RODILLO (F3, 2026-11-17): cada cifra gira y cae en su valor, de izquierda a derecha; la palabra mide lo mismo que la
+  // geometría y, al terminar, cada tira muestra el dígito final. Se lee el DOM después de `seek`, en un navegador real.
+  caso('rodillo: las cifras giran de izquierda a derecha, caen en su valor y la línea mide lo que midió la geometría', async () => {
+    const { scenePage } = await import('../render/src/html/page.mjs');
+    const { openPage } = await import('../render/src/html/cdp.mjs');
+    const { mkdtempSync, writeFileSync: wf, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tl = { key_titles: [{ text: 'Todas pagan: $1.250,50', at_ms: 0, dur_ms: 3000, preset_key: 'key_title_odometer' }] };
+    const s5 = buildScene(args({ typography: typo, durationMs: 3000, textLayers: tl }));
+    const b = s5.blocks[0];
+    const lineH = Math.round(b.px * b.lh);
+    const dir = mkdtempSync(join(tmpdir(), 'vl-roll-'));
+    wf(join(dir, 'p.html'), scenePage(s5, fonts));
+    const page = await openPage({ browserPath: SHELL, url: `file://${dir}/p.html`, width: 1080, height: 1920, mode: 'screenshot' });
+    try {
+      await page.evaluate('window.__vl.ready');
+      const tiras = async (t) => { await page.evaluate(`window.__vl.seek(${t})`); return JSON.parse(await page.evaluate(`JSON.stringify([...document.querySelectorAll('#root span')].filter((x) => x.style.position === 'absolute' && x.style.textAlign === 'center' && x.children.length).map((x) => ({ y: parseFloat((x.style.transform.match(/-?[\\d.]+/) ?? ['0'])[0]), n: x.children.length, last: x.lastElementChild.textContent })))`)); };
+      const ini = await tiras(50), mitad = await tiras(500), fin = await tiras(2000);
+      // «$1.250,50»: 6 cifras, cada una con su tira (una vuelta + su valor).
+      assert.equal(fin.length, 6, JSON.stringify(fin));
+      assert.deepEqual(fin.map((c) => c.last), ['1', '2', '5', '0', '5', '0']);
+      for (const c of ini) assert.equal(c.y, 0, 'antes de contar, todas en el 0');
+      const stepH = Math.round(lineH * 1.6);
+      for (const c of fin) assert.equal(c.y, -(c.n - 1) * stepH, 'al terminar, cada tira muestra su dígito final');
+      const avance = mitad.map((c) => -c.y / ((c.n - 1) * stepH));
+      for (let j = 1; j < avance.length; j++) assert.ok(avance[j] <= avance[j - 1] + 1e-9, `la cifra ${j} no va por delante de la ${j - 1}: ${avance}`);
+      assert.ok(avance[0] > 0 && avance.some((v) => v > 0 && v < 1), `a mitad, las de la izquierda van por delante y alguna sigue girando: ${avance}`);
+      // La palabra con rodillos mide lo mismo que su texto final escrito normal, en la misma línea (la geometría se hizo
+      // con ese texto). Aquí la geometría es estimada (fuente de prueba), así que se compara contra el DOM, no contra ella.
+      const anchos = JSON.parse(await page.evaluate(`(() => {
+        const col = [...document.querySelectorAll('#root span')].find((x) => x.style.clipPath && x.style.display === 'inline-block');
+        const word = col.parentElement, line = word.parentElement;
+        const twin = document.createElement('span'); twin.style.display = 'inline-block'; twin.textContent = ${JSON.stringify('$1.250,50')};
+        line.appendChild(twin);
+        const out = [word.getBoundingClientRect().width, twin.getBoundingClientRect().width];
+        twin.remove();
+        return JSON.stringify(out);
+      })()`));
+      assert.ok(Math.abs(anchos[0] - anchos[1]) <= 1, `la cifra con rodillos mide ${anchos[0]} y escrita normal ${anchos[1]}`);
+    } finally { await page.close(); rmSync(dir, { recursive: true, force: true }); }
   });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.

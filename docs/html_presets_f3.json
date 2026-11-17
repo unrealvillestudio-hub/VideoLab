@@ -1,0 +1,133 @@
+{
+  "_doc": "Estilos de texto del motor HTML, F3 (2026-11-17). Encargo de Sam: «implementa el contador de cifras dígito a dígito para los títulos clave». Un estilo nuevo, proposed: no entra en la rotación (que ofrece primero los validados) hasta que Sam lo valide en el Orchestrator. Mecánica: spec.motion.roll (contrato v1.8.0) — cada cifra gira como un rodillo y cae en su valor, de izquierda a derecha.",
+  "version": "f3",
+  "date": "2026-11-17",
+  "rows": [
+    {
+      "preset_key": "key_title_odometer",
+      "layer": "key_title",
+      "name": "Título clave con cifras en rodillo",
+      "description": "Cada cifra gira como un rodillo y cae en su valor, de izquierda a derecha, con los mismos separadores y decimales del texto; el filete del acento se dibuja encima y las palabras suben escalonadas.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "source": "motor_html_f3",
+      "sort": 80,
+      "spec": {
+        "engine": "html",
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 250,
+        "bold": true,
+        "align": "center",
+        "anchor": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "size_pct": 4.6,
+        "min_size_pct": 3.2,
+        "max_lines": 4,
+        "line_height": 1.12,
+        "outline": {
+          "color": "#000000",
+          "width_pct": 0.16
+        },
+        "shadow": {
+          "alpha": 0.45,
+          "color": "#000000",
+          "depth_pct": 0.12
+        },
+        "rule": {
+          "color": "accent",
+          "gap_pct": 1.0,
+          "position": "above",
+          "width_pct": 10,
+          "thickness_pct": 0.3
+        },
+        "motion": {
+          "roll": {
+            "turns": 1,
+            "lag": 0.12
+          },
+          "tracks": [
+            {
+              "target": "block",
+              "keys": [
+                {
+                  "t": 0,
+                  "opacity": 0
+                },
+                {
+                  "t": 200,
+                  "opacity": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "rule",
+              "keys": [
+                {
+                  "t": 0,
+                  "scale_x": 0
+                },
+                {
+                  "t": 480,
+                  "scale_x": 1,
+                  "ease": "expo_out"
+                }
+              ]
+            },
+            {
+              "target": "word",
+              "stagger": {
+                "each_ms": 40
+              },
+              "keys": [
+                {
+                  "t": 40,
+                  "opacity": 0,
+                  "y_em": 0.3
+                },
+                {
+                  "t": 380,
+                  "opacity": 1,
+                  "y_em": 0,
+                  "ease": "expo_out"
+                }
+              ]
+            },
+            {
+              "target": "number",
+              "keys": [
+                {
+                  "t": 120,
+                  "count": 0
+                },
+                {
+                  "t": 1300,
+                  "count": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "block",
+              "from": "end",
+              "keys": [
+                {
+                  "t": -250,
+                  "opacity": 1
+                },
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "ease": "quad_in"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -11,9 +11,11 @@
 
 import { stateAt, rectAt } from './keyframes.mjs';
 
-export const RUNTIME_VERSION = '1.7.0';
+export const RUNTIME_VERSION = '1.8.0';
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
+/** Rodillo: alto de la casilla de cada dígito, en líneas. 1,6 deja a los dígitos vecinos fuera de la columna en reposo. */
+const ROLL_GAP = 1.6;
 const hex = (h, a = 1) => { const n = parseInt(h.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
 const mix = (a, b, p) => {
   const x = parseInt(a.slice(1), 16), y = parseInt(b.slice(1), 16);
@@ -68,6 +70,38 @@ export function mount(root, scene, doc = root.ownerDocument) {
       lineHeight: Math.round(o.px * o.lh) + 'px', fontWeight: o.bold ? '700' : '400' });
     if (o.outline && o.outlineColor) { node.style.webkitTextStroke = (2 * o.outline) + 'px ' + o.outlineColor; node.style.paintOrder = 'stroke fill'; }
     if (o.shadow && o.shadowColor) node.style.textShadow = o.shadow.depth + 'px ' + o.shadow.depth + 'px 0 ' + hex(o.shadowColor, o.shadow.alpha);
+  };
+  const lh = (b) => Math.round(b.px * b.lh);
+  /**
+   * Cifra en rodillo (`motion.roll`, 2026-11-17). La palabra se arma con su texto final: cada dígito es una columna del
+   * ancho de ese dígito (el dígito queda invisible y reserva el lugar, así la línea mide lo mismo que la geometría) con
+   * una tira de dígitos encima que `seek` desplaza. La columna recorta sólo en vertical (clip-path), así un dígito más
+   * ancho que pasa no se corta de lado. Prefijo, separadores y sufijo son texto quieto.
+   */
+  const buildRoll = (ws, w, run, b, lineH) => {
+    if (run.italic != null) ws.style.fontStyle = run.italic ? 'italic' : 'normal';
+    if (run.weight != null) ws.style.fontWeight = String(run.weight);
+    if (run.color) ws.style.color = b.colors[run.color] ?? '';
+    const final = fmtNumber(w.number, 1);
+    const cols = [];
+    for (const ch of final) {
+      if (!/[0-9]/.test(ch)) { ws.appendChild(doc.createTextNode(b.uppercase ? ch.toLocaleUpperCase() : ch)); continue; }
+      const col = span('', ws);
+      Object.assign(col.style, { display: 'inline-block', position: 'relative', clipPath: 'inset(0 -50% 0 -50%)' });
+      const ghost = span('', col, ch); ghost.style.visibility = 'hidden';
+      const strip = span('', col);
+      Object.assign(strip.style, { position: 'absolute', left: '0px', top: '0px', width: '100%', textAlign: 'center' });
+      cols.push({ strip, digit: Number(ch) });
+    }
+    // Cada dígito de la tira ocupa ROLL_GAP líneas: el dígito queda arriba de su casilla (misma línea base que el texto)
+    // y el hueco debajo deja a los vecinos fuera de la columna. Con casillas de una línea se asomaban por arriba y abajo.
+    const stepH = Math.round(lineH * ROLL_GAP);
+    const steps = (d) => b.roll.turns * 10 + d;
+    for (const c of cols) {
+      c.steps = steps(c.digit);
+      for (let k = 0; k <= c.steps; k++) { const d = span('', c.strip, String(k % 10)); Object.assign(d.style, { display: 'block', height: stepH + 'px' }); }
+    }
+    ws._roll = { cols, stepH };
   };
   const W = scene.canvas.width, H = scene.canvas.height;
   Object.assign(root.style, { position: root.style.position || 'relative', width: W + 'px', height: H + 'px', overflow: 'hidden' });
@@ -131,7 +165,9 @@ export function mount(root, scene, doc = root.ownerDocument) {
         if (wi) line.appendChild(doc.createTextNode(' '));
         const ws = unit(span('', line));
         // Tramos con estilo dentro de la palabra (cursiva, negrita, color): cada uno, su <span>.
-        const runs = w.runs ?? [{ text: w.text }];
+        let runs = w.runs ?? [{ text: w.text }];
+        // Una cifra con rodillo se arma aparte (sólo si la palabra es un tramo; con varios tramos, cuenta como siempre).
+        if (w.number && b.roll && runs.length === 1) { buildRoll(ws, w, runs[0], b, lh(b)); runs = []; }
         for (const run of runs) {
           const shown = b.uppercase ? run.text.toLocaleUpperCase() : run.text;
           const target = runs.length > 1 || run.italic != null || run.weight != null || run.color ? span('', ws) : ws;
@@ -225,7 +261,17 @@ export function mount(root, scene, doc = root.ownerDocument) {
       });
       k.units.number.forEach((node, i) => {
         const s = stateAt(b.tracks, 'number', t, b, { i, n: k.units.number.length });
-        node.textContent = fmtNumber(node._w.number, Math.max(0, Math.min(1, s.count)));
+        const c = Math.max(0, Math.min(1, s.count));
+        if (node._roll) {
+          // Cada cifra avanza con el contador, la de la izquierda primero; `lag` la retrasa respecto de la anterior.
+          const { cols, stepH } = node._roll;
+          const lag = Math.min(b.roll.lag, cols.length > 1 ? 0.9 / (cols.length - 1) : 0);
+          const span1 = 1 - lag * Math.max(0, cols.length - 1);
+          cols.forEach((col, j) => {
+            const p = Math.max(0, Math.min(1, (c - j * lag) / span1));
+            col.strip.style.transform = 'translateY(' + r3(-p * col.steps * stepH) + 'px)';
+          });
+        } else node.textContent = fmtNumber(node._w.number, c);
       });
     }
     for (const c of capBuilt) {
