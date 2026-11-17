@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { digitCount, digitLandings, shotCuts, soundCues, soundMixArgs, loudnormArgs, soundKeysOf, mixGains } from '../render/src/sound.mjs';
+import { digitCount, digitLandings, shotCuts, soundCues, soundMixArgs, loudnormArgs, soundKeysOf, mixGains, composeSoundSpec, effectSlots, EFFECT_FNS } from '../render/src/sound.mjs';
+import { suggestSoundBed } from '../render/src/textrotation.mjs';
 import { validateTextLayers } from '../render/src/textlayers.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
@@ -80,6 +81,7 @@ caso('sonoridad final: dos pasadas, la segunda lineal con lo medido; objetivo po
 });
 
 const F1 = JSON.parse(readFileSync(join(RAIZ, 'docs/sound_presets_f1.json'), 'utf8')).rows;
+const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/sound_presets_f2.json'), 'utf8')).rows;
 caso('presets F1: 6 caracteres, claves únicas, proposed y de sistema; cada uno nombra cama y sonido por función', () => {
   assert.equal(F1.length, 6);
   assert.equal(new Set(F1.map((r) => r.preset_key)).size, 6);
@@ -113,7 +115,81 @@ caso('test N+1: el código de sonido y los presets de sonido no nombran ninguna 
   assert.ok(!marcas.test(code), 'render/src/sound.mjs nombra una marca');
   assert.ok(!marcas.test(JSON.stringify(PRESETS)), 'docs/sound_presets_f0.json nombra una marca');
   assert.ok(!marcas.test(JSON.stringify(F1)), 'docs/sound_presets_f1.json nombra una marca');
+  assert.ok(!marcas.test(JSON.stringify(F2)), 'docs/sound_presets_f2.json nombra una marca');
+  for (const f of ['render/src/textrotation.mjs', 'api/text-styles.js']) {
+    assert.ok(!marcas.test(readFileSync(join(RAIZ, f), 'utf8').replace(/\/\/.*$/gm, '')), `${f} nombra una marca`);
+  }
   for (const r of PRESETS) assert.equal(r.brand_id, null);
+});
+
+// ── F2 (2026-11-17): fondo y efectos por separado ───────────────────────────────────────────────────────────────
+const BED2 = F2.filter((r) => r.kind === 'bed'), FX2 = F2.filter((r) => r.kind === 'effects');
+caso('catálogo F2: 6 de fondo (uno por cama, sin efectos) y 6 de efectos (todos los momentos, sin cama), todos proposed', () => {
+  assert.equal(BED2.length, 6); assert.equal(FX2.length, 6);
+  assert.equal(new Set(BED2.map((r) => r.spec.bed.sound)).size, 6);
+  for (const r of BED2) { assert.ok(!r.spec.cues, r.preset_key); assert.match(r.spec.bed.sound, /^bed_/); }
+  for (const r of FX2) {
+    assert.ok(!r.spec.bed, r.preset_key);
+    for (const fn of EFFECT_FNS) assert.ok(effectSlots(r.spec.cues, fn).length >= 1, `${r.preset_key} sin ${fn}`);
+    for (const k of soundKeysOf(r.spec)) assert.match(k, /^sfx_/);
+  }
+  for (const r of F2) { assert.equal(r.status, 'proposed'); assert.equal(r.spec.master_by_platform.default.lufs, -14); }
+  assert.deepEqual(FX2.map((r) => r.name), ['Discreto', 'Cálido', 'Brillante', 'Para cifras', 'Amable', 'Mínimo']);
+  const minimo = FX2.find((r) => r.name === 'Mínimo');
+  assert.deepEqual(soundKeysOf(minimo.spec).sort(), ['sfx_cta_chime', 'sfx_digit_tick']);
+});
+caso('composeSoundSpec: cama del fondo, momentos de los efectos, volumen y lo elegido de la librería', () => {
+  const bedSpec = BED2[0].spec, fx = FX2.find((r) => r.name === 'Cálido').spec;
+  const s = composeSoundSpec({ bedSpec, effectsSpec: fx, bed: { sound_key: 'bed_lofi_keys', level_lu: 2 },
+    effects: { gain_db: -2, sounds_by_fn: { shot_cut: null, cta: 'sfx_cta_sparkle' } } });
+  assert.equal(s.bed.sound, 'bed_lofi_keys');
+  assert.equal(s.bed.under_voice_lu, bedSpec.bed.under_voice_lu - 2);
+  assert.equal(s.cues.shot_cut.sound, null);
+  assert.equal(s.cues.block_entry.by_layer.cta.sound, 'sfx_cta_sparkle');
+  assert.equal(s.cues.block_entry.by_layer.hook.gain_db, fx.cues.block_entry.by_layer.hook.gain_db - 2);
+  assert.equal(s.cues.digit_land.gain_db, fx.cues.digit_land.gain_db - 2);
+  assert.equal(fx.cues.shot_cut.sound, 'sfx_cut_air_puff', 'el preset original no se toca');
+  assert.ok(!soundKeysOf(s).includes('sfx_cut_air_puff'));
+  assert.deepEqual(s.master_by_platform, bedSpec.master_by_platform);
+});
+caso('composeSoundSpec: sólo fondo (sin entradas) y sólo efectos (sin cama)', () => {
+  const sb = composeSoundSpec({ bedSpec: BED2[1].spec });
+  assert.ok(sb.bed && !sb.cues);
+  assert.equal(soundCues({ blocks: [{ layer: 'hook', preset_key: 'h', start_ms: 0, end_ms: 1000, lines: [] }] }, null, sb).length, 0);
+  const se = composeSoundSpec({ effectsSpec: FX2[0].spec });
+  assert.ok(!se.bed && se.cues);
+  assert.deepEqual(se.master_by_platform, FX2[0].spec.master_by_platform);
+});
+caso('composeSoundSpec: un momento que el preset no declara no se puede cambiar (SOUND_SLOT_MISSING)', () => {
+  const sinCifra = structuredClone(FX2[0].spec); delete sinCifra.cues.digit_land;
+  assert.throws(() => composeSoundSpec({ effectsSpec: sinCifra, effects: { sounds_by_fn: { digit_land: 'sfx_digit_blip' } } }), (e) => e.code === 'SOUND_SLOT_MISSING' && e.fn === 'digit_land');
+});
+caso('pedido v1.10.0: bed/effects con volumen y librería; rangos, prefijos, momentos y mezcla con preset_key se rechazan', () => {
+  const base = { hook: { text: 'Hola', preset_key: 'hook_x', start_ms: 0, end_ms: 1000 } };
+  validateTextLayers({ ...base, sound: { bed: { preset_key: 'sound_bed_soft_pulse', sound_key: 'bed_lofi_keys', level_lu: -6 },
+    effects: { preset_key: 'sound_fx_warm', gain_db: 6, sounds_by_fn: { shot_cut: null, cta: 'sfx_cta_sparkle' } } } });
+  validateTextLayers({ ...base, sound: { bed: { preset_key: 'sound_bed_soft_pulse' }, effects: null } });
+  validateTextLayers({ ...base, sound: { bed: { enabled: false }, effects: { preset_key: 'sound_fx_warm' } } });
+  const mal = (sound, re) => assert.throws(() => validateTextLayers({ ...base, sound }), re);
+  mal({ preset_key: 'sound_soft_pulse', bed: { preset_key: 'sound_bed_soft_pulse' } }, /no los dos/);
+  mal({ bed: {} }, /bed\.preset_key/);
+  mal({ bed: { preset_key: 'sound_bed_x', level_lu: 7 } }, /level_lu/);
+  mal({ bed: { preset_key: 'sound_bed_x', level_lu: 1.5 } }, /level_lu/);
+  mal({ bed: { preset_key: 'sound_bed_x', sound_key: 'sfx_digit_tick' } }, /bed\.sound_key/);
+  mal({ effects: { preset_key: 'sound_fx_x', gain_db: -13 } }, /gain_db/);
+  mal({ effects: { preset_key: 'sound_fx_x', sounds_by_fn: { music_bed: null } } }, /momento desconocido/);
+  mal({ effects: { preset_key: 'sound_fx_x', sounds_by_fn: { cta: 'bed_soft_pulse' } } }, /sounds_by_fn\.cta/);
+});
+caso('rotación del fondo: el preset de fondo usado hace más tiempo; validados primero; los efectos no rotan', () => {
+  const rows = F2.map((r) => ({ ...r }));
+  assert.equal(suggestSoundBed(rows, 'marca', []).preset_key, BED2[0].preset_key);
+  assert.equal(suggestSoundBed(rows, 'marca', [[BED2[0].preset_key]]).preset_key, BED2[1].preset_key);
+  const hist = BED2.slice(0, 5).map((r) => [r.preset_key]).reverse();
+  assert.equal(suggestSoundBed(rows, 'marca', hist).preset_key, BED2[5].preset_key);
+  assert.ok(suggestSoundBed(rows, 'marca', []).pool.every((k) => BED2.some((r) => r.preset_key === k)));
+  rows.find((r) => r.preset_key === BED2[3].preset_key).status = 'validated_by_judgment';
+  assert.deepEqual(suggestSoundBed(rows, 'marca', []).pool, [BED2[3].preset_key]);
+  assert.equal(suggestSoundBed(FX2, 'marca', []), null);
 });
 
 if (fallos) { console.error(`\n${fallos} caso(s) MAL`); process.exit(1); }

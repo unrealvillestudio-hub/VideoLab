@@ -176,7 +176,8 @@ POST /api/execute                                  // mismo transporte: 202 + la
       key_titles?: [{ text, at_ms, dur_ms, preset_key }],
       cta?:        { text, at_ms, dur_ms?, preset_key } | null,       // sin dur_ms, hasta el final
       identity?:   { strip, identity_role?, strip_role? },        // identity_role: rol de brand_palette (strip_role: alias heredado, §4 ter.5)
-      sound?:      { preset_key, platform?, enabled? } | null } } }   // v1.9.0 (§4 ter.8): capa de sonido; no cuenta como capa de texto
+      sound?:      { preset_key, platform?, enabled? }                 // v1.9.0 (§4 ter.8): capa de sonido; no cuenta como capa de texto
+                 | { platform?, enabled?, bed?: {…} | null, effects?: {…} | null } | null } } }   // v1.10.0: fondo y efectos por separado
 ```
 
 **Reglas de la forma** (las comprueba `api/execute` con la misma función que el job, `validateTextLayers`):
@@ -382,7 +383,44 @@ es una aproximación (`approximate`). `GET /engine/<versión>/<módulo>` sirve s
 `runtime.mjs`; otra versión u otro archivo → 404. Errores: forma inválida o texto que no cabe → 400 con su
 `error_label`; el resto → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
-### 4 ter.8 Capa de sonido — `text_layers.sound` (v1.9.0)
+### 4 ter.8 Capa de sonido — `text_layers.sound` (v1.9.0; fondo y efectos por separado desde v1.10.0)
+
+**v1.10.0 (2026-11-17) — fondo y efectos por separado.** Decisiones de Sam del 2026-11-17: la ventana de Controles de
+Sonido separa «sonidos de fondo» y «efectos de sonido», cada uno con sus presets, la librería y su volumen; el fondo
+entra en la rotación y los efectos van según la pieza; se puede silenciar un solo momento.
+
+```
+text_layers.sound = {
+  platform?, enabled?,
+  bed?:     { preset_key, sound_key?, enabled?, level_lu? } | null,
+  effects?: { preset_key, enabled?, gain_db?, sounds_by_fn?: { <momento>: sound_key | null } } | null
+}
+```
+
+- **Familias** (`videolab_sound_presets.kind`): `bed` (fondo), `effects` (efectos) y `mixed` (los dos, la forma v1.9.0).
+  `bed.preset_key` tiene que ser de `kind = 'bed'` y `effects.preset_key` de `kind = 'effects'`; si no, es
+  `VIDEOLAB_BAD_REQUEST`. Una familia ausente, `null` o `enabled: false` no suena. `preset_key` es obligatorio en una
+  familia encendida; lo elegido de la librería se aplica encima.
+- **Fondo:** `sound_key` cambia la cama por otra de la librería (`bed_…`, función `music_bed`). `level_lu` es un entero de
+  −6 a +6: sube (+) o baja (−) la cama respecto de lo que fija su preset (`under_voice_lu`).
+- **Efectos:** `gain_db` es un entero de −12 a +6 que mueve todos los efectos. `sounds_by_fn` pone en un momento un efecto
+  de la librería (`sfx_…`, de la misma función) o lo silencia con `null`. Momentos: `block_entry` (entrada del gancho y
+  del título clave), `word_pop` (rol), `cta`, `impact` (golpe de los estilos que lo piden), `digit_land` (cifra del
+  rodillo que cae) y `shot_cut` (corte de toma). Un preset de efectos declara todos los momentos; uno con
+  `"sound": null` está en silencio y conserva su nivel.
+- **Sonoridad de referencia y master:** del preset de fondo; con el fondo apagado, del de efectos.
+- **Errores del pedido** (`VIDEOLAB_BAD_REQUEST`): `preset_key` y `bed`/`effects` a la vez; familia equivocada; un sonido
+  que la librería no tiene; un sonido de otra función en un momento; cambiar un momento que el preset no declara.
+- **Salida:** `text_layout.sound` agrega `bed: { preset_key, sound_key, level_lu } | null` y
+  `effects: { preset_key, gain_db, sounds_by_fn } | null`; `preset_key` queda `null` en la forma nueva.
+- **Librería para la ventana:** VoiceLab `GET /api/sound-library?brandId=…[&fn=…]` (contrato VoiceLab v1.2 §3 ter).
+- **Rotación:** `GET /api/text-styles` devuelve además `suggested.sound_bed` (§4 ter.7).
+- **Catálogo:** 6 presets de fondo y 6 de efectos (`docs/sound_presets_f2.json`), todos `proposed`.
+- La forma v1.9.0 `{ preset_key }` sigue valiendo, con cualquier familia, y sale igual que antes (`bed` y `effects` en
+  `null`).
+
+**Texto v1.9.0** (vigente para la forma `{ preset_key }`):
+
 
 Objetivo validado por Sam (2026-11-17): VideoLab mezcla una capa de sonido **propia** y determinista sobre la voz.
 Reparto: **VoiceLab es dueño de la librería** (`voicelab_sound_library`, modo `sound` de su `/api/execute`) y **VideoLab
@@ -429,6 +467,10 @@ más tiempo y el grupo que rota:
 - **El estilo se congela en `text_layers`:** quien genera (el Orchestrator hoy, el carril mañana) toma la sugerencia como
   estilo por defecto y la escribe en el pedido. Volver a renderizar la misma pieza da el mismo video («mismo pedido →
   mismo video»). VideoLab nunca elige estilo durante el render.
+- **Fondo de sonido (v1.10.0):** `suggested.sound_bed = { preset_key, pool } | null`. El grupo son los presets
+  `kind = 'bed'` que ve la marca (validados si los hay; si no, todos los activos) y el historial,
+  `text_layout.sound.bed.preset_key` de los mismos jobs. Misma regla. Los efectos no rotan: van según la pieza
+  (decisión de Sam del 2026-11-17). Si falla la lectura del sonido, el texto se sugiere igual y `sound_bed` sale `null`.
 - Errores: sin `brandId` → 400 `VIDEOLAB_BAD_REQUEST`; si falla la base → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
 ## 5. Salida
@@ -508,6 +550,10 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.10.0 (2026-11-17)** — Sonido F2 (§4 ter.8): `text_layers.sound.bed` y `text_layers.sound.effects` por separado,
+  con volumen (`level_lu`, `gain_db`), elección desde la librería (`sound_key`, `sounds_by_fn`) y silencio por momento
+  (`null`). Familias en `videolab_sound_presets.kind`; 6 presets de fondo y 6 de efectos (`docs/sound_presets_f2.json`).
+  `GET /api/text-styles` sugiere el fondo (`suggested.sound_bed`). Compatible hacia atrás: la forma v1.9.0 no cambia.
 - **v1.9.0 (2026-11-17)** — Capa de sonido (§4 ter.8): `text_layers.sound`, salida `text_layout.sound` y aviso
   `SOUND_FALLBACK`. Sonidos de la librería propia de VoiceLab; presets en `public.videolab_sound_presets` (6 de sistema,
   `docs/sound_presets_f1.json`). Compatible hacia atrás: sin `sound`, igual que en v1.8.0.

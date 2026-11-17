@@ -224,6 +224,18 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
   const SOUND_SPEC = { voice_ref_lufs: -20, bed: { sound: 'bed_prueba', under_voice_lu: 14, duck_db: 9 },
     cues: { block_entry: { by_layer: { hook: { sound: 'sfx_prueba', gain_db: -12 } } } },
     master_by_platform: { default: { lufs: -14, true_peak_db: -2, lra: 11 } } };
+  // F2 (v1.10.0): un preset de fondo y uno de efectos que declara todos los momentos (el corte de toma, en silencio).
+  const MASTER = { default: { lufs: -14, true_peak_db: -2, lra: 11 } };
+  const FX_SPEC = { voice_ref_lufs: -20, master_by_platform: MASTER, cues: {
+    block_entry: { by_layer: { hook: { sound: 'sfx_prueba', gain_db: -12 }, key_title: { sound: 'sfx_prueba', gain_db: -15 }, role: { sound: null, gain_db: -20 }, cta: { sound: null, gain_db: -15 } },
+      by_text_preset: { key_title_stamp_spring: { sound: null, gain_db: -12 } } },
+    digit_land: { sound: 'sfx_tic_cifra', gain_db: -16 }, shot_cut: { sound: null, gain_db: -26 } } };
+  const SOUND_ROWS = [
+    { preset_key: 'sound_prueba', brand_id: null, status: 'proposed', spec: SOUND_SPEC },
+    { preset_key: 'sound_bed_prueba', kind: 'bed', brand_id: null, status: 'proposed', spec: { voice_ref_lufs: -20, master_by_platform: MASTER, bed: { sound: 'bed_prueba', under_voice_lu: 14, duck_db: 9 } } },
+    { preset_key: 'sound_fx_prueba', kind: 'effects', brand_id: null, status: 'proposed', spec: FX_SPEC },
+  ];
+  const pedidosSonido = [];
   let shaRoto = false;
   const tl = TL(); tl.key_titles = []; tl.cta = null; tl.roles[0].dur_ms = 1400; tl.hook.preset_key = 'hook_char_rise';
   tl.hook.italic_spans = ['cambia']; tl.identity = { strip: true, identity_role: 'mar' };
@@ -252,14 +264,23 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
     if (u === 'https://fonts.test/f-b.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans-Bold.ttf')));
     // La cursiva: cualquier TTF válido sirve (el sistema puede no traer la oblicua de DejaVu).
     if (u === 'https://fonts.test/f-i.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans.ttf')));
-    if (u.includes('videolab_sound_presets')) return resp(u.includes('preset_key=eq.sound_prueba') ? [{ preset_key: 'sound_prueba', brand_id: null, status: 'proposed', spec: SOUND_SPEC }] : []);
+    if (u.includes('videolab_sound_presets')) {
+      const pedidas = decodeURIComponent((u.match(/preset_key=in\.\(([^)]*)\)/) ?? [])[1] ?? '').split(',');
+      return resp(SOUND_ROWS.filter((r) => pedidas.includes(r.preset_key)));
+    }
     if (u.includes('lab_configs') && u.includes('lab_key=eq.voicelab')) return resp([{ api_endpoint: 'https://voicelab.test' }]);
     if (u === 'https://voicelab.test/api/execute' && m === 'POST') {
       const b = JSON.parse(init.body);
-      assert.equal(b.stage.mode, 'sound'); assert.deepEqual([...b.params.sounds].sort(), ['bed_prueba', 'sfx_prueba']);
-      return resp({ success: true, mode: 'sound', sounds: [
-        { key: 'bed_prueba', fn: 'music_bed', url: 'https://media.test/cama.wav', sha256: shaOf('cama.wav'), loudness_lufs: -18, license: 'propia' },
-        { key: 'sfx_prueba', fn: 'block_entry', url: 'https://media.test/tic.wav', sha256: shaRoto ? '0'.repeat(64) : shaOf('tic.wav'), loudness_lufs: null, license: 'propia' }] });
+      assert.equal(b.stage.mode, 'sound');
+      pedidosSonido.push([...b.params.sounds].sort());
+      const lib = {
+        bed_prueba: { fn: 'music_bed', url: 'https://media.test/cama.wav', sha256: shaOf('cama.wav'), loudness_lufs: -18 },
+        sfx_prueba: { fn: 'block_entry', url: 'https://media.test/tic.wav', sha256: shaRoto ? '0'.repeat(64) : shaOf('tic.wav'), loudness_lufs: null },
+        sfx_tic_cifra: { fn: 'digit_land', url: 'https://media.test/tic.wav', sha256: shaOf('tic.wav'), loudness_lufs: null },
+      };
+      const faltan = b.params.sounds.filter((k) => !lib[k]);
+      if (faltan.length) return resp({ success: false, error_label: 'SOUND_NOT_FOUND', error: `la librería no tiene: ${faltan.join(', ')}` }, 422);
+      return resp({ success: true, mode: 'sound', sounds: b.params.sounds.map((k) => ({ key: k, ...lib[k], license: 'propia' })) });
     }
     if (u === 'https://media.test/cama.wav') return resp(readFileSync(join(dir, 'cama.wav')));
     if (u === 'https://media.test/tic.wav') return resp(readFileSync(join(dir, 'tic.wav')));
@@ -311,6 +332,36 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
     caso('sonido: un preset de sonido desconocido es un error del pedido (VIDEOLAB_BAD_REQUEST), no un aviso', () => {
       assert.ok(err5, 'el job tenía que fallar');
       assert.match(String(err5?.message ?? err5), /preset de sonido sound_que_no_existe/);
+    });
+    // SONIDO F2 (v1.10.0): fondo y efectos por separado, con volumen y un momento cambiado desde la librería.
+    payload.previousOutputs.text_layers = { ...tl, sound: {
+      bed: { preset_key: 'sound_bed_prueba', level_lu: 3 },
+      effects: { preset_key: 'sound_fx_prueba', gain_db: -3, sounds_by_fn: { digit_land: null, cta: 'sfx_prueba' } } } };
+    const err6 = await renderJob(JOB, env).then(() => null, (e) => e);
+    caso('sonido F2: un sonido de otra función en un momento es un error del pedido', () => {
+      assert.ok(err6, 'el job tenía que fallar');
+      assert.match(String(err6?.message ?? err6), /sfx_prueba es un sonido de block_entry, no de cta/);
+    });
+    pedidosSonido.length = 0;
+    payload.previousOutputs.text_layers = { ...tl, sound: {
+      bed: { preset_key: 'sound_bed_prueba', level_lu: 3 },
+      effects: { preset_key: 'sound_fx_prueba', gain_db: -3, sounds_by_fn: { digit_land: null } } } };
+    const out7 = await renderJob(JOB, env);
+    caso('sonido F2: fondo y efectos por separado; volumen, momento en silencio y salida con lo elegido', () => {
+      const snd = out7.text_layout.sound;
+      assert.ok(snd && snd.applied !== false, JSON.stringify(out7.text_layout.warnings));
+      assert.equal(snd.preset_key, null);
+      assert.deepEqual(snd.bed, { preset_key: 'sound_bed_prueba', sound_key: 'bed_prueba', level_lu: 3 });
+      assert.deepEqual(snd.effects, { preset_key: 'sound_fx_prueba', gain_db: -3, sounds_by_fn: { digit_land: null } });
+      // La cifra en silencio no se pide a VoiceLab.
+      assert.deepEqual(pedidosSonido[0], ['bed_prueba', 'sfx_prueba']);
+      assert.ok(Math.abs(snd.master.lufs - -14) <= 1, `sonoridad final ${snd.master.lufs}`);
+    });
+    payload.previousOutputs.text_layers = { ...tl, sound: { bed: { preset_key: 'sound_fx_prueba' } } };
+    const err8 = await renderJob(JOB, env).then(() => null, (e) => e);
+    caso('sonido F2: un preset de efectos pedido como fondo es un error del pedido', () => {
+      assert.ok(err8, 'el job tenía que fallar');
+      assert.match(String(err8?.message ?? err8), /es de la familia effects, no bed/);
     });
     payload.previousOutputs.text_layers = tl;
   } finally { globalThis.fetch = fetchOriginal; }
@@ -373,7 +424,7 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
 // ROTACIÓN (F2): VideoLab sugiere el estilo usado hace más tiempo, por marca y capa; quien genera lo congela.
 {
   const R = await import('../render/src/textrotation.mjs');
-  const { historyOf } = await import('../api/text-styles.js');
+  const { historyOf, bedHistoryOf } = await import('../api/text-styles.js');
   const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
   const val = (rows) => rows.map((r) => ({ ...r, status: 'validated_by_judgment' }));
   const rows = [...SEED, ...val(F0), ...val(F2)];
@@ -408,6 +459,7 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
   });
   caso('rotación: el historial sale de text_layout.presets de cada job; filas raras no rompen', () => {
     assert.deepEqual(historyOf([{ presets: ['a', 'b'] }, { presets: null }, {}, { presets: ['c', 3] }]), [['a', 'b'], [], [], ['c']]);
+    assert.deepEqual(bedHistoryOf([{ bed: 'sound_bed_a' }, { bed: null }, {}]), [['sound_bed_a'], [], []]);
   });
 }
 

@@ -132,6 +132,68 @@ export function soundKeysOf(spec) {
   return [...keys];
 }
 
+// ── F2 (2026-11-17): fondo y efectos por separado ────────────────────────────────────────────────────────────────
+// Decisión de Sam: la ventana de Controles de Sonido separa «sonidos de fondo» y «efectos de sonido», cada uno con sus
+// presets, la librería y su volumen; el fondo rota y los efectos van según la pieza; se puede silenciar un solo momento.
+
+/** Los momentos del video que suenan con un efecto (eje del sistema; mismos valores que `fn` en la librería). */
+export const EFFECT_FNS = Object.freeze(['block_entry', 'word_pop', 'cta', 'impact', 'digit_land', 'shot_cut']);
+/** Rangos de volumen del pedido (contrato v1.10.0 §4 ter.8): el fondo en LU sobre su preset, los efectos en dB. */
+export const BED_LEVEL_LU = Object.freeze({ min: -6, max: 6 });
+export const EFFECTS_GAIN_DB = Object.freeze({ min: -12, max: 6 });
+
+/**
+ * Las entradas de la hoja que corresponden a un momento, dentro de `cues` (referencias: se pueden modificar).
+ * La entrada de bloque suena en el gancho y en el título clave; la palabra que salta, en el rol; el golpe, en los
+ * estilos de texto que lo piden (`by_text_preset`). PURO salvo por devolver referencias.
+ */
+export function effectSlots(cues, fn) {
+  const L = cues?.block_entry?.by_layer ?? {};
+  const slots = {
+    block_entry: [L.hook, L.key_title],
+    word_pop: [L.role],
+    cta: [L.cta],
+    impact: Object.values(cues?.block_entry?.by_text_preset ?? {}),
+    digit_land: [cues?.digit_land],
+    shot_cut: [cues?.shot_cut],
+  }[fn];
+  if (!slots) throw new Error(`momento de sonido desconocido: ${fn}`);
+  return slots.filter((s) => s && typeof s === 'object');
+}
+
+/**
+ * El spec que mezcla el job a partir de un preset de fondo y uno de efectos, más lo que eligió la ventana. PURO.
+ *   bedSpec / effectsSpec: el `spec` de cada preset (o null si esa familia está apagada).
+ *   bed: { sound_key?, level_lu? } — `sound_key` cambia la cama; `level_lu` sube (+) o baja (−) la cama sobre su preset.
+ *   effects: { gain_db?, sounds_by_fn? } — `gain_db` mueve todos los efectos; `sounds_by_fn[fn]` pone un sonido de la
+ *     librería en ese momento, o lo silencia con null.
+ * Un momento que el preset de efectos no declara no se puede cambiar: lanza `{ code: 'SOUND_SLOT_MISSING', fn }`.
+ * La sonoridad de referencia y el master salen del preset de fondo; si el fondo está apagado, del de efectos.
+ */
+export function composeSoundSpec({ bedSpec = null, effectsSpec = null, bed = {}, effects = {} }) {
+  const spec = {
+    voice_ref_lufs: num(bedSpec?.voice_ref_lufs ?? effectsSpec?.voice_ref_lufs, -20),
+    master_by_platform: bedSpec?.master_by_platform ?? effectsSpec?.master_by_platform ?? {},
+  };
+  if (bedSpec?.bed) {
+    spec.bed = { ...bedSpec.bed };
+    if (bed?.sound_key) spec.bed.sound = bed.sound_key;
+    if (num(bed?.level_lu, 0) !== 0) spec.bed.under_voice_lu = num(spec.bed.under_voice_lu, 14) - num(bed.level_lu, 0);
+  }
+  if (effectsSpec?.cues) {
+    const cues = structuredClone(effectsSpec.cues);
+    for (const [fn, key] of Object.entries(effects?.sounds_by_fn ?? {})) {
+      const slots = effectSlots(cues, fn);
+      if (!slots.length) throw Object.assign(new Error(`el preset de efectos no tiene el momento ${fn}`), { code: 'SOUND_SLOT_MISSING', fn });
+      for (const s of slots) s.sound = key;
+    }
+    const g = num(effects?.gain_db, 0);
+    if (g !== 0) for (const fn of EFFECT_FNS) for (const s of effectSlots(cues, fn)) s.gain_db = num(s.gain_db, -18) + g;
+    spec.cues = cues;
+  }
+  return spec;
+}
+
 /**
  * Ganancias de la mezcla a partir de lo MEDIDO (F1): la voz se lleva a `voice_ref_lufs` y la cama queda
  * `under_voice_lu` por debajo, usando la sonoridad de cada archivo que da la librería. Así el preset dice cuánto se
