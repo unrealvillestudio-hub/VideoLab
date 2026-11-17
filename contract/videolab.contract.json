@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -200,7 +200,7 @@
     "seed": "docs/text_presets_seed.json",
     "role_max_entry_ms": 350,
     "role_caption_margin_pct": 2,
-    "output": "{ mode, video, clean_video: { url }, text_layers, text_layout: { canal, metrics, blocks, warnings, engine, capture, presets }, provider, model_id, cost_usd, ledger_ids }",
+    "output": "{ mode, video, clean_video: { url }, text_layers, text_layout: { canal, metrics, blocks, warnings, engine, capture, presets, frames_sha256, host: { cpu, avx512, x264_asm } }, provider, model_id, cost_usd, ledger_ids }",
     "conversation_output": "clean_video: { url, storage_path }, timeline: { words: [{ text, start_ms, end_ms, person_id }], turns: [{ turn, seat, person_id, start_ms, end_ms }], turns_without_words }, text_layers, text_layout",
     "engines": [
       "ass",

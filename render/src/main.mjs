@@ -20,7 +20,7 @@ import { brandFont } from './fonts.mjs';
 import { prepareTextLayers } from './textprep.mjs';
 import { renderHtmlLayers } from './html/capture.mjs';
 import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline } from './textlayers.mjs';
-import { X264 } from './x264.mjs';
+import { X264, HOST } from './x264.mjs';
 
 const run = promisify(execFile);
 const LAB = 'videolab';
@@ -86,7 +86,8 @@ async function logRenderCost(cfg, { brandId, jobId, pieceId, platform, rate, t0,
 /**
  * Dibuja las capas sobre `input` con el motor que pidió el pedido. Si el motor HTML falla (navegador ausente, captura
  * rota), se dibuja con ASS y se avisa (`TEXT_ENGINE_FALLBACK`): la pieza sale igual, con el dibujo de respaldo.
- * Devuelve { engine, capture, warnings }: el motor que DIBUJÓ, el modo de captura y los avisos del dibujo.
+ * Devuelve { engine, capture, warnings, frames_sha256 }: el motor que DIBUJÓ, el modo de captura, los avisos del dibujo y
+ * la huella de los fotogramas capturados (sólo `html`; sha256 de la lista de sha256 de cada PNG).
  */
 async function drawTextLayers({ tlr, input, out, work }) {
   const warnings = [];
@@ -94,19 +95,23 @@ async function drawTextLayers({ tlr, input, out, work }) {
     try {
       const fonts = tlr.fontFiles.filter((f) => tlr.scene.families.includes(f.family)).map((f) => ({ ...f, bytes: readFileSync(f.file) }));
       const r = await renderHtmlLayers({ scene: tlr.scene, fonts, input, out, workDir: work });
-      return { engine: 'html', capture: r.mode, warnings: r.warnings };
+      return { engine: 'html', capture: r.mode, warnings: r.warnings, frames_sha256: r.digest };
     } catch (e) {
       warnings.push(`TEXT_ENGINE_FALLBACK: el motor HTML falló (${String(e?.message ?? e).slice(0, 200)}); se dibuja con ASS`);
     }
   }
   await run('ffmpeg', ['-loglevel', 'error', ...textLayersArgs({ input, ass: tlr.ass, fontsDir: tlr.fontsDir, filters: tlr.filters, out })], { maxBuffer: 1 << 26 });
-  return { engine: 'ass', capture: null, warnings };
+  return { engine: 'ass', capture: null, warnings, frames_sha256: null };
 }
 
-/** `text_layout` de la salida: geometría, avisos y la ETIQUETA del dibujo (motor, captura y presets). */
+/**
+ * `text_layout` de la salida: geometría, avisos y la ETIQUETA del dibujo (motor, captura y presets), más la huella de lo
+ * capturado y la máquina que lo dibujó: con esas dos, una diferencia entre dos ejecuciones del mismo pedido se atribuye
+ * a la captura o al resto de la cadena, y a la máquina (contrato v1.7.1).
+ */
 function textLayout(tlr, drawn) {
   return { canal: tlr.canal, metrics: tlr.metrics, blocks: tlr.blocks, warnings: [...tlr.warnings, ...drawn.warnings],
-    engine: drawn.engine, capture: drawn.capture, presets: tlr.presets };
+    engine: drawn.engine, capture: drawn.capture, presets: tlr.presets, frames_sha256: drawn.frames_sha256 ?? null, host: HOST };
 }
 
 /**
