@@ -23,7 +23,7 @@ import { tmpdir, homedir } from 'node:os';
 import { openPage } from './cdp.mjs';
 import { pngOf } from './capture.mjs';
 
-/** Tamaño de la máscara (el del modelo, en vertical 9:16); el navegador la escala al lienzo con filtro bilineal. */
+/** Tamaño de la máscara (el del modelo, en vertical 9:16); ffmpeg la escala al lienzo (bicúbico). */
 export const SEG_SIZE = Object.freeze({ w: 288, h: 512 });
 /** Uno de cada `SEG_STRIDE` fotogramas pasa por el modelo; los demás se interpolan. */
 export const SEG_STRIDE = 2;
@@ -122,7 +122,7 @@ window.__seg = (b64, w, h, ts) => {
 
 /**
  * Las máscaras de los fotogramas `frames` del video `input` (fps del lienzo). Devuelve Map fotograma →
- * { w, h, data: Uint8Array, url: data:image/png } (blanco = persona). Lanza si algo falla: el llamador pone delante.
+ * { w, h, data: Uint8Array, png: Buffer } (PNG en gris, blanco = persona). Lanza si algo falla: el llamador pone delante.
  */
 export async function segmentFrames({ input, frames, fps, browserPath, assets = segAssets(), size = SEG_SIZE, stride = SEG_STRIDE }) {
   if (!frames.length) return new Map();
@@ -167,7 +167,7 @@ export async function segmentFrames({ input, frames, fps, browserPath, assets = 
     if (missing.length) throw new Error(`el video no tiene los fotogramas ${missing.slice(0, 3).join(', ')}…`);
     const full = fillAndSmooth(frames, raw);
     const out = new Map();
-    for (const [f, data] of full) out.set(f, { w: size.w, h: size.h, data, url: `data:image/png;base64,${pngOf(size.w, size.h, 0, data).toString('base64')}` });
+    for (const [f, data] of full) out.set(f, { w: size.w, h: size.h, data, png: pngOf(size.w, size.h, 0, data) });
     return out;
   } finally {
     if (ff && ff.exitCode == null) ff.kill('SIGKILL');

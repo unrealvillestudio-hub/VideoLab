@@ -104,16 +104,17 @@ export function mount(root, scene, doc = root.ownerDocument, opts = {}) {
     ws._roll = { cols, stepH };
   };
   const W = scene.canvas.width, H = scene.canvas.height;
-  // ZONAS (texto detrás de las personas, runtime 1.9.0): con `opts.regions` y algún bloque con `depth`, la página mide
-  // 3W × H: [texto de delante | texto de detrás | máscara de la persona]. El capturador toma una sola imagen por fotograma
-  // y ffmpeg recorta el texto de detrás con la máscara (render/src/html/capture.mjs). Sin `opts.regions` (la vista previa
-  // del Orchestrator), todo se dibuja delante, como hasta la 1.8.0.
+  // CAPAS (texto detrás de las personas, runtime 1.9.0): con `opts.regions` y algún bloque con `depth`, esos bloques van
+  // en una capa aparte y `setLayer` elige qué se ve: 'front' (todo menos lo de detrás), 'behind' (sólo lo de detrás) o
+  // 'all'. El capturador toma cada capa por separado y ffmpeg recorta la de detrás con la máscara de la persona
+  // (render/src/html/capture.mjs). Sin `opts.regions` (la vista previa del Orchestrator), todo se dibuja delante.
   const regions = !!opts.regions && scene.blocks.some((b) => b.depth);
-  Object.assign(root.style, { position: root.style.position || 'relative', width: (regions ? 3 * W : W) + 'px', height: H + 'px', overflow: 'hidden' });
+  Object.assign(root.style, { position: root.style.position || 'relative', width: W + 'px', height: H + 'px', overflow: 'hidden' });
 
   // Franja de identidad (dato de la marca): un rectángulo fijo, siempre visible.
+  let st = null;
   if (scene.strip) {
-    const st = abs(el('', root));
+    st = abs(el('', root));
     Object.assign(st.style, { left: scene.strip.x + 'px', top: scene.strip.y + 'px', width: scene.strip.w + 'px', height: scene.strip.h + 'px', background: scene.strip.color });
   }
 
@@ -125,15 +126,12 @@ export function mount(root, scene, doc = root.ownerDocument, opts = {}) {
   Object.assign(layer.style, { width: W + 'px', height: H + 'px' });
   const safeClip = scene.safe ? 'inset(' + scene.safe.y + 'px ' + (W - scene.safe.x - scene.safe.w) + 'px ' + (H - scene.safe.y - scene.safe.h) + 'px ' + scene.safe.x + 'px)' : null;
   if (safeClip) layer.style.clipPath = safeClip;
-  // Con zonas: cada zona recorta a su lienzo, así un texto que entra desde fuera no se asoma a la zona de al lado.
-  let back = null, maskBox = null, maskImg = null;
+  // Con capas: la de detrás, del mismo tamaño y con el mismo recorte a la zona segura.
+  let back = null;
   if (regions) {
-    layer.style.overflow = 'hidden';
     back = abs(el('', root));
-    Object.assign(back.style, { left: W + 'px', width: W + 'px', height: H + 'px', overflow: 'hidden' });
+    Object.assign(back.style, { width: W + 'px', height: H + 'px', display: 'none' });
     if (safeClip) back.style.clipPath = safeClip;
-    maskBox = abs(el('', root));
-    Object.assign(maskBox.style, { left: 2 * W + 'px', width: W + 'px', height: H + 'px', overflow: 'hidden' });
   }
 
   // ───── bloques ─────
@@ -340,21 +338,14 @@ export function mount(root, scene, doc = root.ownerDocument, opts = {}) {
 
   function destroy() { while (root.firstChild) root.removeChild(root.firstChild); }
 
-  /**
-   * La máscara de la persona en la zona 3 (PNG en gris: blanco = persona), o ninguna con null. La imagen se decodifica
-   * ANTES de entrar al DOM (`decode()`): así el fotograma siguiente ya la pinta, nunca a medias. Devuelve una promesa.
-   */
-  function setMask(url) {
-    if (!maskBox) return Promise.resolve(false);
-    if (url == null) { if (maskImg) maskImg.style.display = 'none'; return Promise.resolve(true); }
-    const img = doc.createElement('img');
-    img.src = url;
-    return img.decode().then(() => {
-      Object.assign(img.style, { position: 'absolute', left: '0px', top: '0px', width: W + 'px', height: H + 'px', display: 'block' });
-      if (maskImg) maskBox.replaceChild(img, maskImg); else maskBox.appendChild(img);
-      maskImg = img;
-      return true;
-    });
+  /** Qué capa se ve: 'front' (todo menos lo de detrás), 'behind' (sólo lo de detrás) o 'all'. */
+  function setLayer(which) {
+    if (!back) return false;
+    const front = which !== 'behind', behind = which !== 'front';
+    layer.style.display = front ? 'block' : 'none';
+    if (st) st.style.display = front ? 'block' : 'none';
+    back.style.display = behind ? 'block' : 'none';
+    return true;
   }
 
   /** Cajas de las palabras de los bloques que van detrás y están en pantalla, en coordenadas del lienzo. */
@@ -373,5 +364,5 @@ export function mount(root, scene, doc = root.ownerDocument, opts = {}) {
     if (k && back && k.wrap.parentNode === back) layer.appendChild(k.wrap);
   }
 
-  return { seek, check, prepare, destroy, setMask, depthRects, toFront, regions };
+  return { seek, check, prepare, destroy, setLayer, depthRects, toFront, regions };
 }

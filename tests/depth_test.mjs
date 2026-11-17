@@ -102,16 +102,16 @@ caso('PNG en gris: ffmpeg lo lee con los mismos valores', () => {
   assert.equal(blankPng(2, 2).length > 0, true);
 });
 
-caso('grafo de ffmpeg con zonas: recorta las tres, toma la máscara del rojo tal cual y compone video → detrás → delante', () => {
-  const a = overlayArgs({ input: 'in.mp4', fps: 30, out: 'o.mp4', regions: { w: W, h: H } });
+caso('grafo de ffmpeg con texto detrás: cada tramo entra en su segundo, con su máscara, entre el video y el texto de delante', () => {
+  const a = overlayArgs({ input: 'in.mp4', fps: 30, out: 'o.mp4', size: { w: W, h: H }, behind: [{ dir: '/t/d0', start_s: 1.5 }, { dir: '/t/d1', start_s: 9 }] });
   const g = a[a.indexOf('-filter_complex') + 1];
-  assert.match(g, /crop=1080:1920:0:0\[fr\]/);
-  assert.match(g, /crop=1080:1920:1080:0/);
-  assert.match(g, /crop=1080:1920:2160:0,extractplanes=r,negate\[inv\]/);
+  assert.deepEqual(a.slice(a.indexOf('-itsoffset'), a.indexOf('-itsoffset') + 6), ['-itsoffset', '1.5', '-framerate', '30', '-i', '/t/d0/b_%05d.png']);
+  assert.ok(a.includes('/t/d1/m_%05d.png'));
+  assert.match(g, /\[3:v\]scale=1080:1920:flags=bicubic,format=gray,negate\[inv0\]/);
   assert.match(g, /blend=all_mode=multiply/);
-  assert.match(g, /\[0:v\]\[bm\]overlay.*\[m0\]\[fr\]overlay/);
+  assert.match(g, /\[0:v\]\[bm0\]overlay.*\[c0\]\[bm1\]overlay.*\[c1\]\[o\]overlay/);
   const sin = overlayArgs({ input: 'in.mp4', fps: 30, out: 'o.mp4' });
-  assert.ok(!sin[sin.indexOf('-filter_complex') + 1].includes('crop'), 'sin zonas, el grafo de siempre');
+  assert.equal(sin[sin.indexOf('-filter_complex') + 1], '[1:v]format=rgba[o];[0:v][o]overlay=0:0:format=auto:eof_action=pass[m];[m]format=yuv420p[v]', 'sin texto detrás, el grafo de siempre');
 });
 
 // ── Con navegador: tres zonas, máscara por fotograma, control de legibilidad y composición ──
@@ -130,7 +130,7 @@ if (SHELL && existsSync(FONT)) {
   // Máscara sintética: la mitad izquierda del lienzo es «persona».
   const half = new Uint8Array(SEG_SIZE.w * SEG_SIZE.h);
   for (let y = 0; y < SEG_SIZE.h; y++) for (let x = 0; x < SEG_SIZE.w / 2; x++) half[y * SEG_SIZE.w + x] = 255;
-  const maskOf = (data) => ({ w: SEG_SIZE.w, h: SEG_SIZE.h, data, url: `data:image/png;base64,${pngOf(SEG_SIZE.w, SEG_SIZE.h, 0, data).toString('base64')}` });
+  const maskOf = (data) => ({ w: SEG_SIZE.w, h: SEG_SIZE.h, data, png: pngOf(SEG_SIZE.w, SEG_SIZE.h, 0, data) });
   const half4 = new Map(frames.map((f) => [f, maskOf(half)]));
   const none = new Map(frames.map((f) => [f, maskOf(new Uint8Array(SEG_SIZE.w * SEG_SIZE.h))]));
 

@@ -46,12 +46,20 @@ todas las posibilidades […] y las implementamos». Objetivo F1 confirmado: «s
 
 **Cómo funciona:**
 1. `segment.mjs` recorta los fotogramas de los bloques con `depth` en el mismo navegador.
-2. `capture.mjs`, antes de capturar, mide la cobertura y pasa delante lo que no se leería. Después captura una página de
-   3W: [delante | detrás | máscara].
-3. ffmpeg recorta las tres zonas, multiplica el alfa del texto de detrás por (255 − máscara) y compone video → detrás →
-   delante.
+2. `capture.mjs`, antes de capturar, mide la cobertura y pasa delante lo que no se leería. Después captura sólo la capa
+   de detrás en sus tramos, y escribe a disco el texto y la máscara de cada fotograma. Al final captura la de delante,
+   como siempre.
+3. ffmpeg mete cada tramo en su segundo (`-itsoffset`), multiplica el alfa del texto de detrás por (255 − máscara) y
+   compone video → detrás → delante.
 
-La máscara entra como `<img>` decodificada antes de entrar al DOM: el fotograma siguiente ya la pinta entera.
+**Corrección del 2026-11-17, tras medir en producción.** La primera versión capturaba todo el video a 3W
+([delante | detrás | máscara], con la máscara como `<img>`).
+- **Medido:** el job real tardó de 471 a 601 s, contra unos 250 s antes, con un tope de 900 s.
+- **Causa:** los subtítulos cubren todo el video, así que casi todos los fotogramas se capturaban a triple ancho.
+  En local, la captura a 3W costaba un 55 % más en toda la escena.
+- **Ahora:** la captura extra sólo existe en los fotogramas con texto detrás (en local, 18 s contra 15 s de la escena
+  sin efecto, antes 24 s).
+- **Detección:** `text_layout.depth_ms` deja el tiempo de cada etapa.
 
 **Archivos del recorte:** `render/scripts/seg-assets.sh` los baja fijados por sha256. Los usan la imagen (`/opt/vl-seg`)
 y el CI.

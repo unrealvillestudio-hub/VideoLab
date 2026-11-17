@@ -375,12 +375,15 @@ Objetivo F1 confirmado: «sí al objetivo F1, VideoLab, tope 35 %».
 - **Qué hace el job:**
   1. recorta a las personas sólo en los fotogramas de esos bloques: MediaPipe, modelo multiclase de personas, Apache-2.0, en el mismo navegador del motor;
   2. pasa por el modelo uno de cada dos fotogramas, interpola los demás y suaviza en el tiempo con enteros;
-  3. dibuja el texto de detrás en una zona aparte y lo compone con ffmpeg entre el video y el texto de delante: donde está la persona, el texto de detrás no se ve.
+  3. captura el texto de detrás aparte, sólo en sus tramos, con su máscara. ffmpeg lo compone entre el video y el texto de delante, que se captura como siempre: donde está la persona, el texto de detrás no se ve.
+     - *Antes (v1.11.0 inicial, conservado):* la página medía 3W ([delante | detrás | máscara]) en todo el video. En el job real costaba de 220 a 350 s más (*medido* 2026-11-17) y se reemplazó.
 - **Control de legibilidad:** antes de capturar, el motor mide qué parte del área de las palabras tapa la persona, en el tramo central del bloque.
   - Si pasa `max_cover`, el bloque va **delante** y sale el aviso `TEXT_BEHIND_FALLBACK`.
   - Si no hay recorte (faltan los archivos del modelo o el recorte falló), el bloque también va delante, con el aviso `TEXT_DEPTH_FALLBACK`.
   - Ningún video sale con el texto ilegible por este efecto.
-- **Salida:** `text_layout.depth = [{ id, layer, preset_key, cover, max_cover, placed: 'behind' | 'front' }]`.
+- **Salida:**
+  - `text_layout.depth = [{ id, layer, preset_key, cover, max_cover, placed: 'behind' | 'front' }]`;
+  - `text_layout.depth_ms = { segment, frames, capture_behind, capture_total }`: los tiempos, para atribuir el costo.
 - **Vista previa** (`/api/text-scene` + runtime 1.9.0): el texto con `depth` se dibuja delante, porque la vista previa no recorta.
 - **Estilos iniciales** (`docs/html_presets_f4.json`, `proposed`): `hook_behind_rise`, `hook_behind_emerge`, `key_title_behind_rise` y `key_title_behind_cross`.
 
