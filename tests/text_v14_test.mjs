@@ -322,6 +322,47 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
   });
 }
 
+// ROTACIÓN (F2): VideoLab sugiere el estilo usado hace más tiempo, por marca y capa; quien genera lo congela.
+{
+  const R = await import('../render/src/textrotation.mjs');
+  const { historyOf } = await import('../api/text-styles.js');
+  const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
+  const val = (rows) => rows.map((r) => ({ ...r, status: 'validated_by_judgment' }));
+  const rows = [...SEED, ...val(F0), ...val(F2)];
+  caso('rotación: sin historial, el primero del grupo validado html por sort; nunca un estilo ASS si hay html validados', () => {
+    const s = R.suggestStyles(rows, BRAND, []);
+    for (const l of R.ROTATION_LAYERS) {
+      assert.ok(s[l], l);
+      assert.equal(s[l].pool.length, 5, `${l}: 5 estilos html por capa`);
+      assert.ok(s[l].pool.every((k) => rows.find((r) => r.preset_key === k).spec.engine === 'html'), l);
+    }
+  });
+  caso('rotación: recorre los 5 sin repetir y vuelve a empezar por el usado hace más tiempo', () => {
+    const hist = [];
+    const vistos = [];
+    for (let i = 0; i < 7; i++) {
+      const s = R.suggestStyles(rows, BRAND, hist);
+      vistos.push(s.hook.preset_key);
+      hist.unshift([s.hook.preset_key, s.cta.preset_key]);
+    }
+    assert.equal(new Set(vistos.slice(0, 5)).size, 5, vistos.join(' '));
+    assert.equal(vistos[5], vistos[0]);
+    assert.equal(vistos[6], vistos[1]);
+  });
+  caso('rotación: la fila de la marca manda; un estilo retirado o inactivo no entra; proposed sólo si no hay validados', () => {
+    const hook = rows.filter((r) => r.layer === 'hook' && r.spec.engine === 'html');
+    const retirado = { ...hook[0], brand_id: BRAND, status: 'retired' };
+    const s = R.suggestStyles([...rows, retirado], BRAND, []);
+    assert.ok(!s.hook.pool.includes(hook[0].preset_key));
+    const soloPropuestos = [...SEED, ...F0, ...F2];
+    assert.equal(R.suggestStyles(soloPropuestos, BRAND, []).hook.pool.length, 5);
+    assert.ok(!R.suggestStyles([...SEED], BRAND, []).hook.pool.some((k) => k.includes('html')));
+  });
+  caso('rotación: el historial sale de text_layout.presets de cada job; filas raras no rompen', () => {
+    assert.deepEqual(historyOf([{ presets: ['a', 'b'] }, { presets: null }, {}, { presets: ['c', 3] }]), [['a', 'b'], [], [], ['c']]);
+  });
+}
+
 await Promise.all(pendientes);
 if (fallos) { console.error(`\n${fallos} caso(s) MAL`); process.exit(1); }
 console.log('\ntext_v14: todo en verde');

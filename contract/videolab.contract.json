@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -276,6 +276,18 @@
     "html_catalog": [
       "docs/html_presets_f0.json",
       "docs/html_presets_f2.json"
-    ]
+    ],
+    "rotation": {
+      "endpoint": "GET /api/text-styles?brandId=…",
+      "rule": "least_recently_used",
+      "layers": [
+        "hook",
+        "role",
+        "caption",
+        "key_title",
+        "cta"
+      ],
+      "frozen_by": "quien genera escribe la sugerencia en text_layers; VideoLab nunca elige durante el render"
+    }
   }
 }
