@@ -27,7 +27,8 @@ import * as T from '../render/src/textlayers.mjs';
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const SEED = JSON.parse(readFileSync(join(RAIZ, 'docs/text_presets_seed.json'), 'utf8')).rows;
 const F0 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f0.json'), 'utf8')).rows;
-const PRESETS = [...SEED, ...F0];
+const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
+const PRESETS = [...SEED, ...F0, ...F2];
 
 let fallos = 0;
 const pendientes = [];
@@ -138,7 +139,7 @@ caso('validateMotion señala el punto exacto del error', () => {
   assert.throws(() => validateMotion({ tracks: [{ target: 'word', keys: [{ t: 0, brillo: 1 }] }] }), /propiedad desconocida/);
   assert.throws(() => validateMotion({ tracks: [{ target: 'box', stagger: { each_ms: 5 }, keys: [{ t: 0 }] }] }), /stagger sólo vale/);
   assert.throws(() => validateMotion({ tracks: [{ target: 'word', keys: [{ t: 10 }, { t: 5 }] }] }), /va hacia atrás/);
-  for (const r of F0) validateMotion(r.spec.motion, r.preset_key);
+  for (const r of [...F0, ...F2]) validateMotion(r.spec.motion, r.preset_key);
 });
 
 caso('cada entrada del contrato (§4 ter.3) se traduce a pistas válidas', () => {
@@ -198,6 +199,34 @@ caso('tramos con texto y PNG vacío: el capturador sólo abre el navegador donde
   assert.ok(overlayArgs({ input: 'a.mp4', fps: 30, out: 'b.mp4', filters: ['drawbox=x=0'] }).join(' ').includes('drawbox=x=0,format=yuv420p'));
 });
 
+// F2 (2026-11-17, objetivo validado por Sam): 5 estilos html por capa, rotables entre generaciones.
+caso('catálogo F2: 5 estilos html por capa (F0 + F2), claves únicas, todos proposed y de sistema', () => {
+  const html = [...F0, ...F2];
+  const porCapa = {};
+  for (const r of html) { assert.equal(r.spec.engine, 'html', r.preset_key); porCapa[r.layer] = (porCapa[r.layer] ?? 0) + 1; }
+  assert.deepEqual(porCapa, { hook: 5, role: 5, caption: 5, key_title: 5, cta: 5 });
+  assert.equal(new Set([...SEED, ...html].map((r) => r.preset_key)).size, SEED.length + html.length, 'clave repetida');
+  for (const r of F2) { assert.equal(r.status, 'proposed'); assert.equal(r.brand_id, null); }
+});
+caso('catálogo F2: cada rol entra en ≤ 350 ms y sin rebote, también con sus pistas (y la barrera ve un rol que rebota)', () => {
+  for (const r of F2.filter((x) => x.layer === 'role')) assert.equal(T.roleMotionProblem(r.spec.motion, r.spec.max_lines), null, r.preset_key);
+  const malo = { ...F2.find((x) => x.layer === 'role'), preset_key: 'rol_que_rebota' };
+  malo.spec = { ...malo.spec, motion: { tracks: [{ target: 'block', keys: [{ t: 0, scale: 0.8 }, { t: 300, scale: 1, ease: 'back_out' }] }] } };
+  assert.throws(() => T.resolveTextPreset([malo], 'rol_que_rebota', BRAND, 'role'), /rebota/);
+});
+caso('catálogo F2: cada estilo arma su escena en su capa sin mover la geometría', () => {
+  const slot = { hook: (tl, k) => { tl.hook.preset_key = k; }, role: (tl, k) => { tl.roles[0].preset_key = k; },
+    caption: (tl, k) => { tl.captions.preset_key = k; }, key_title: (tl, k) => { tl.key_titles[0].preset_key = k; }, cta: (tl, k) => { tl.cta.preset_key = k; } };
+  for (const r of F2) {
+    const tl = TL(); slot[r.layer](tl, r.preset_key);
+    const a = args({ textLayers: tl });
+    const s = buildScene(a);
+    assert.deepEqual(s.layout, T.buildTextLayers(a).blocks, r.preset_key);
+    if (r.layer === 'caption') assert.ok(s.captions?.tracks?.length, `${r.preset_key}: subtítulos sin pistas`);
+    else assert.ok(s.blocks.some((b) => b.preset_key === r.preset_key || b.layer === r.layer), r.preset_key);
+  }
+});
+
 caso('test N+1: el código del motor no nombra ninguna marca (sin comentarios)', () => {
   const dir = join(RAIZ, 'render/src/html');
   const marcas = /NeuroneSCF|ForumPHs|LucienSael|UnrealvilleStudio|SamPublisher|D7Herbal|VivoseMask|VizosCosmetics|DiamondDetails|PatriciaOsorio/i;
@@ -206,6 +235,7 @@ caso('test N+1: el código del motor no nombra ninguna marca (sin comentarios)',
     assert.ok(!marcas.test(code), `${f} nombra una marca`);
   }
   assert.ok(!marcas.test(JSON.stringify(F0)), 'docs/html_presets_f0.json nombra una marca');
+  assert.ok(!marcas.test(JSON.stringify(F2)), 'docs/html_presets_f2.json nombra una marca');
 });
 
 // 2026-11-16 — el banco de la F0 se rompió en main al retirarse `brandFontFile` (PR #26): ninguna prueba importaba el
@@ -274,6 +304,17 @@ if (SHELL && FONT) {
     const seq = await run('screenshot');
     assert.deepEqual(hs, seq.hs);
   });
+  // UNA FAMILIA QUE SÓLO SE DIBUJA EN NEGRITA (F2, 2026-11-17). Con su cara regular declarada pero sin usar, el navegador no
+  // la cargaba y la comprobación de fuentes daba falso: el motor HTML fallaba y la pieza caía a ASS.
+  const BOLD = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'].find(existsSync);
+  if (BOLD) caso('una familia sólo en negrita (con su cara regular declarada) carga y se captura', async () => {
+    const tl = { hook: TL().hook };   // hook_char_rise es negrita: la familia display sólo se usa en negrita
+    const s2 = buildScene(args({ typography: typo, durationMs: 1000, textLayers: tl }));
+    const f2 = [{ family: typo[0].font_family, bytes, format: 'truetype' },
+      { family: typo[0].font_family, bytes: readFileSync(BOLD), format: 'truetype', weight: 700 }];
+    const r = await renderHtmlLayers({ scene: s2, fonts: f2, browserPath: SHELL, mode: 'screenshot', encode: false, frames: 3 });
+    assert.equal(r.captured, 3);
+  });
   // LA FRANJA NO SE APAGA EN LAS PAUSAS (2026-11-17). Fuera de los tramos con texto el capturador repite un fotograma de
   // reposo; era un PNG transparente y, desde que la franja se dibuja en la página, se apagaba en cada pausa entre
   // subtítulos (medido en el job real: 55 fotogramas sin franja). El reposo sale ahora de la página: la franja sigue ahí.
@@ -300,6 +341,23 @@ if (SHELL && FONT) {
     const esperado = sc.strip.color.replace('#', '').toLowerCase() + 'ff';
     assert.equal(px(pngs[conTexto]), esperado, 'con texto');
     assert.equal(px(pngs[pausa]), esperado, `en la pausa (fotograma ${pausa})`);
+  });
+  // RECORTE A LA ZONA SEGURA (F2, 2026-11-17; contrato §4 ter.4). Una entrada que agranda el bloque no sale de la zona
+  // segura ni tapa la franja: el sello entra a 1,25× y antes cubría la franja un par de fotogramas (medido en una muestra).
+  caso('una entrada que agranda el bloque no pinta fuera de la zona segura ni tapa la franja', async () => {
+    const tl = { key_titles: [{ text: 'Una frase clave bastante larga para el sello', at_ms: 0, dur_ms: 1500, preset_key: 'key_title_stamp_spring' }],
+      identity: TL().identity };
+    const s3 = buildScene(args({ typography: typo, durationMs: 1500, textLayers: tl }));
+    const b = s3.blocks[0];
+    assert.ok(b.rect.w * 1.25 > s3.safe.w, 'el sello agrandado tiene que pasar del ancho seguro para que la prueba valga');
+    const pngs = {};
+    await renderHtmlLayers({ scene: s3, fonts, browserPath: SHELL, mode: 'screenshot', encode: false, frames: 3, onFrame: (i, png) => { pngs[i] = png; } });
+    const { spawnSync } = await import('node:child_process');
+    const px = (png, x, y) => [...spawnSync('ffmpeg', ['-v', 'error', '-f', 'png_pipe', '-i', 'pipe:0', '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { input: png }).stdout];
+    const y = Math.round(b.rect.y + b.rect.h / 2);
+    assert.equal(px(pngs[1], s3.safe.x - 3, y)[3], 0, 'fuera de la zona segura no se pinta');
+    const sx = Math.floor(s3.strip.x + s3.strip.w / 2);
+    assert.equal(Buffer.from(px(pngs[1], sx, y)).toString('hex'), s3.strip.color.slice(1).toLowerCase() + 'ff', 'la franja sigue intacta');
   });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.

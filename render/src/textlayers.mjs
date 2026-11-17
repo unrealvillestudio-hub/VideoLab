@@ -284,7 +284,42 @@ export function resolveTextPreset(rows, key, brandId, layer) {
   if (layer === 'role' && num(row.spec.duration_ms, 0) > ROLE_MAX_ENTRY_MS) {
     bad(`el preset de rol ${key} entra en ${row.spec.duration_ms} ms (tope ${ROLE_MAX_ENTRY_MS} ms)`);
   }
+  if (layer === 'role') {
+    const p = roleMotionProblem(row.spec.motion, num(row.spec.max_lines, 3));
+    if (p) bad(`el preset de rol ${key}: ${p}`);
+  }
   return row;
+}
+
+/**
+ * La regla del rol (≤ 350 ms y sin rebote, decisión de Sam 2026-11-16) aplicada también a `spec.motion` (F2, 2026-11-17):
+ * antes sólo se miraba `duration_ms`, y un preset con pistas podía entrar más lento o rebotar sin que nadie lo viera.
+ * Entrada = toda pista que no sea de salida (`from: 'end'`) ni repetida; su última clave, más el escalonado del último
+ * elemento, termina en ≤ 350 ms. El escalonado sólo vale por líneas (acotado por `max_lines`): por palabra o letra no se
+ * puede acotar sin el texto. Curvas con rebote o sobrepaso prohibidas: back_*, elastic_*, bounce_* y spring subamortiguado.
+ * Devuelve el problema o null. PURO.
+ */
+export function roleMotionProblem(motion, maxLines = 3) {
+  if (!motion?.tracks) return null;
+  const overshoot = (e) => {
+    if (typeof e !== 'string') return false;
+    if (/^(back|elastic|bounce)_/.test(e)) return true;
+    const m = e.match(/^spring:([\d.]+),([\d.]+)(?:,([\d.]+))?$/);
+    return m ? Number(m[2]) / (2 * Math.sqrt(Number(m[1]) * Number(m[3] ?? 1))) < 1 : false;
+  };
+  for (const tr of motion.tracks) {
+    if (tr.from === 'end' || tr.repeat) continue;
+    const ks = tr.keys ?? [];
+    const bouncy = ks.find((k) => overshoot(k.ease));
+    if (bouncy) return `la pista ${tr.target} rebota (${bouncy.ease}); el rol entra sin rebote`;
+    let end = Math.max(0, ...ks.map((k) => Number(k.t) || 0));
+    if (tr.stagger) {
+      if (tr.target !== 'line') return `la pista ${tr.target} escalona por ${tr.target}; en el rol sólo se escalona por línea`;
+      end += Number(tr.stagger.each_ms ?? 0) * Math.max(0, maxLines - 1);
+    }
+    if (end > ROLE_MAX_ENTRY_MS) return `la pista ${tr.target} termina su entrada en ${end} ms (tope ${ROLE_MAX_ENTRY_MS} ms)`;
+  }
+  return null;
 }
 
 /**
@@ -554,6 +589,36 @@ export function groupCaptionWords(words, { min = 3, max = 4, maxGapMs = 700 } = 
   return groups;
 }
 
+/**
+ * Cuándo se ve cada grupo de subtítulos (F2, 2026-11-17). Una sola fuente para ASS y para el motor HTML.
+ * - `spec.hold_gap_ms` (dato del preset; 0 o ausente = como antes): si la pausa hasta el grupo siguiente es ≤ ese valor,
+ *   el grupo se queda en pantalla hasta que entra el siguiente. Sin esto, cada pausa corta dejaba 1–3 fotogramas sin
+ *   subtítulo (parpadeo).
+ * - `spec.max_cps` (dato del preset; ausente = sin tope): tope de lectura en caracteres por segundo. Un grupo que lo pasa
+ *   no se corta (el karaoke sigue a la voz, que se oye): se cuenta y se avisa (`TEXT_CAPTION_FAST`). Ronda 1 de vigilancia,
+ *   R1.4: las guías de lectura citan 17 cps.
+ * Devuelve { times: [{ start_ms, end_ms }], fast: n, maxCps }. PURO.
+ */
+export function captionTimes(groups, spec, durationMs) {
+  const hold = Math.max(0, num(spec?.hold_gap_ms, 0));
+  const maxCps = spec?.max_cps != null ? num(spec.max_cps, 0) : null;
+  let fast = 0;
+  const times = groups.map((g, i) => {
+    const start_ms = g[0].start_ms;
+    const lastEnd = g[g.length - 1].end_ms;
+    const next = groups[i + 1];
+    const gap = next ? next[0].start_ms - lastEnd : Infinity;
+    const end_ms = Math.min(durationMs, hold > 0 && gap >= 0 && gap <= hold ? next[0].start_ms : lastEnd);
+    if (maxCps > 0) {
+      const chars = g.map((w) => w.text).join(' ').length;
+      const secs = Math.max(0.001, (end_ms - start_ms) / 1000);
+      if (chars / secs > maxCps) fast++;
+    }
+    return { start_ms, end_ms };
+  });
+  return { times, fast, maxCps };
+}
+
 /** Las palabras del timeline, sin etiquetas de interpretación y en orden. Forma inválida → VIDEOLAB_BAD_REQUEST. PURO. */
 export function timelineWords(timeline) {
   const raw = timeline?.words;
@@ -795,6 +860,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   // 1 · Banda de subtítulos (fija abajo de la zona segura): el resto se coloca respecto de ella.
   let band = null;
   let capPlan = null;
+  let capWarning = null;
   if (tl.captions && tl.captions.enabled !== false) {
     const row = resolveTextPreset(presets, tl.captions.preset_key, brandId, 'caption');
     // Zoom del operador sobre los subtítulos (contrato v1.3.3): sólo tamaño; la banda sigue fija abajo.
@@ -809,7 +875,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const bandH = Math.ceil(lines * top.px * top.lh + 2 * top.padY + 2 * top.ext);
     if (bandH > safe.h) nofit('la banda de subtítulos no entra en la zona segura');
     band = { x: safe.x, y: safe.y1 - bandH, w: safe.w, h: bandH };
-    capPlan = { row, spec, fam, groups, ms };
+    const ct = captionTimes(groups, spec, durationMs);
+    capPlan = { row, spec, fam, groups, ms, times: ct.times };
+    if (ct.fast) capWarning = `TEXT_CAPTION_FAST: ${ct.fast} de ${groups.length} grupos de subtítulos pasan de ${ct.maxCps} caracteres por segundo (tope de lectura del preset ${row.preset_key})`;
     blocks.push({ layer: 'caption_band', preset_key: row.preset_key, rect: band, start_ms: words[0].start_ms, end_ms: Math.min(durationMs, words[words.length - 1].end_ms) });
   }
   const margin = Math.ceil(H * ROLE_CAPTION_MARGIN_PCT / 100);
@@ -834,7 +902,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   // alternando— dentro de la zona segura y sobre los subtítulos. Si no hay lugar libre, queda en su ancla y se avisa
   // (`warnings`): nunca se descarta texto en silencio.
   const faces = facesPx(timeline, canvas);
-  const warnings = [];
+  const warnings = capWarning ? [capWarning] : [];
   // Un lugar libre en vertical a partir de `rect`, o null. PURO respecto de lo ya colocado.
   const rectsIn = (b, t) => (b.segments ? b.segments.filter((g) => overlapT(g, t)).map((g) => g.rect) : [b.rect]);
   const freeSpot = (rect, t) => {
@@ -1036,7 +1104,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
 
   // 5 · Subtítulos karaoke: un evento por palabra activa, la palabra activa en el color de acento del preset.
   if (capPlan) {
-    const { spec, fam, groups, ms, row } = capPlan;
+    const { spec, fam, groups, ms, row, times } = capPlan;
     const textHex = color(spec.color ?? 'text');
     const aw = obj(spec.active_word) ? spec.active_word : {};
     const activeCol = assColor(color(aw.color ?? 'accent'));
@@ -1045,7 +1113,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const cx = R(band.x + band.w / 2), by = R(band.y + band.h - (ms[0].padY + ms[0].ext));
     groups.forEach((g, gi) => {
       const m = ms[gi];
-      const gStart = g[0].start_ms, gEnd = Math.min(durationMs, g[g.length - 1].end_ms);
+      const gStart = times[gi].start_ms, gEnd = times[gi].end_ms;
       if (gStart >= durationMs) return;
       if (obj(spec.box)) {
         const bw = R(m.w), bh = R(m.h);

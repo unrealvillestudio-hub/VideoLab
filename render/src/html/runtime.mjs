@@ -11,7 +11,7 @@
 
 import { stateAt, rectAt } from './keyframes.mjs';
 
-export const RUNTIME_VERSION = '1.4.0';
+export const RUNTIME_VERSION = '1.5.0';
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const hex = (h, a = 1) => { const n = parseInt(h.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
@@ -78,10 +78,21 @@ export function mount(root, scene, doc = root.ownerDocument) {
     Object.assign(st.style, { left: scene.strip.x + 'px', top: scene.strip.y + 'px', width: scene.strip.w + 'px', height: scene.strip.h + 'px', background: scene.strip.color });
   }
 
+  // Capa del texto, recortada a la zona segura (contrato §4 ter.4: «cada evento lleva además un recorte a la zona
+  // segura»; el dibujo ASS lo hace con \clip). Sin este recorte, una entrada que agranda el bloque (p. ej. un sello que
+  // entra a 1,25×) salía un instante de la zona segura y tapaba la franja (medido en la F2, 2026-11-17). La franja va
+  // fuera de esta capa: nada del texto la tapa.
+  const layer = abs(el('', root));
+  Object.assign(layer.style, { width: W + 'px', height: H + 'px' });
+  if (scene.safe) {
+    const s = scene.safe;
+    layer.style.clipPath = 'inset(' + s.y + 'px ' + (W - s.x - s.w) + 'px ' + (H - s.y - s.h) + 'px ' + s.x + 'px)';
+  }
+
   // ───── bloques ─────
   const built = scene.blocks.map((b) => {
     const has = (t) => b.tracks.some((tr) => tr.target === t);
-    const wrap = abs(el('', root));
+    const wrap = abs(el('', layer));
     wrap.style.width = b.rect.w + 'px'; wrap.style.height = b.rect.h + 'px';
     const ruleOff = b.rule && b.rule.position === 'above' ? b.rule.th + b.rule.gap : 0;
     const content = { y: ruleOff, h: b.rect.h - (b.rule ? b.rule.th + b.rule.gap : 0) };
@@ -149,7 +160,7 @@ export function mount(root, scene, doc = root.ownerDocument) {
   // ───── subtítulos ─────
   const cap = scene.captions;
   const capBuilt = cap ? cap.groups.map((g) => {
-    const wrap = abs(el('', root));
+    const wrap = abs(el('', layer));
     const cx = cap.band.x + cap.band.w / 2;
     const bottom = cap.band.y + cap.band.h;
     Object.assign(wrap.style, { left: (cx - g.w / 2) + 'px', top: (bottom - g.h) + 'px', width: g.w + 'px', height: g.h + 'px' });

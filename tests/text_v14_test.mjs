@@ -268,6 +268,33 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
   } finally { globalThis.fetch = fetchOriginal; }
 } else console.log('  --  job con el motor HTML: se salta (sin libass, sin chrome-headless-shell o sin DejaVu)');
 
+// F2 (2026-11-17) — subtítulos: el grupo se queda hasta el siguiente si la pausa es corta (hold_gap_ms) y se avisa si pasa
+// el tope de lectura (max_cps). Una sola fuente de tiempos para ASS y HTML.
+caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps cuenta y avisa; sin los campos, como antes', () => {
+  const w = (text, s, e) => ({ text, start_ms: s, end_ms: e });
+  const g = [[w('Hola', 0, 300), w('mundo', 300, 600)], [w('otra', 900, 1200), w('vez', 1200, 1500)], [w('fin', 3000, 3300)]];
+  assert.deepEqual(T.captionTimes(g, {}, 5000).times.map((t) => t.end_ms), [600, 1500, 3300]);
+  assert.deepEqual(T.captionTimes(g, { hold_gap_ms: 400 }, 5000).times.map((t) => t.end_ms), [900, 1500, 3300]);
+  const rapido = [[w('Palabras', 0, 100), w('muy', 100, 200), w('rápidas', 200, 300)]];
+  assert.equal(T.captionTimes(rapido, { max_cps: 17 }, 5000).fast, 1);
+  assert.equal(T.captionTimes(rapido, {}, 5000).fast, 0);
+});
+{
+  const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
+  caso('subtítulos: el aviso TEXT_CAPTION_FAST sale en text_layout, y ASS y HTML usan los mismos tiempos de grupo', () => {
+    const tl = { captions: { enabled: true, preset_key: 'caption_html_pop', accent_role: 'brasa' } };
+    const a = args({ textLayers: tl, presets: [...PRESETS, ...F2] });
+    const words = [];
+    'una frase que se dice muy pero muy rápido para probar el tope de lectura'.split(' ').forEach((t, i) => words.push({ text: t, start_ms: i * 90, end_ms: i * 90 + 80, person_id: 'p1' }));
+    a.timeline = { words };
+    const plan = T.buildTextLayers(a);
+    assert.ok(plan.warnings.some((x) => x.startsWith('TEXT_CAPTION_FAST')), plan.warnings.join(' | '));
+    const sc = buildScene(a);
+    const { times } = T.captionTimes(T.groupCaptionWords(T.timelineWords(a.timeline), { min: 3, max: 4, maxGapMs: 700 }), F2.find((r) => r.preset_key === 'caption_html_pop').spec, a.durationMs);
+    assert.deepEqual(sc.captions.groups.map((x) => [x.start_ms, x.end_ms]), times.map((x) => [x.start_ms, x.end_ms]));
+  });
+}
+
 // VISTA PREVIA (§4 ter.5): el módulo servido es el mismo archivo del motor, sólo esa lista cerrada y sólo la versión vigente.
 {
   const { engineFile } = await import('../api/engine.js');

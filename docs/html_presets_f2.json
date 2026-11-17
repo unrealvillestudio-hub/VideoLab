@@ -1,0 +1,1819 @@
+{
+ "_doc": "Estilos de texto del motor HTML, F2 (2026-11-17). Objetivo validado por Sam: 5 estilos html por capa, rotados por el carril entre generaciones. Con los 3 de la F0 (docs/html_presets_f0.json, ya sembrados) suman 25: 5 de gancho, 5 de rol, 5 de subtítulos, 5 de título clave y 5 de CTA. Mismo esquema que text_presets_seed.json más `engine: 'html'` y `motion` (render/src/html/keyframes.mjs). Las claves de geometría son las de los presets medidos de cada capa. Los de rol entran en ≤ 350 ms y sin rebote. Todos `proposed`: los valida Sam. La migración de datos los copia tal cual.",
+ "version": "f2",
+ "date": "2026-11-17",
+ "rows": [
+  {
+   "preset_key": "hook_word_cascade",
+   "layer": "hook",
+   "name": "Gancho en cascada de palabras",
+   "description": "Cada palabra cae desde arriba y se asienta, una tras otra; las de énfasis toman el acento con un pequeño salto.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "size_pct": 5.2,
+    "min_size_pct": 2.8,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "top",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "pop_words",
+    "duration_ms": 420,
+    "exit_ms": 240,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 70
+       },
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": -0.6
+        },
+        {
+         "t": 360,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 500,
+         "tint": 0,
+         "scale": 1
+        },
+        {
+         "t": 680,
+         "tint": 1,
+         "scale": 1.1,
+         "ease": "cubic_out"
+        },
+        {
+         "t": 860,
+         "scale": 1,
+         "ease": "back_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -240,
+         "opacity": 1,
+         "y_em": 0
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": -0.2,
+         "ease": "cubic_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "hook_line_reveal",
+   "layer": "hook",
+   "name": "Gancho que sube línea a línea",
+   "description": "Cada línea sube desde debajo de su propia máscara, escalonada; la palabra de énfasis se subraya al final.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 80,
+   "spec": {
+    "engine": "html",
+    "size_pct": 5.2,
+    "min_size_pct": 2.8,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "top",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "rise",
+    "duration_ms": 480,
+    "exit_ms": 240,
+    "box": {
+     "color": "scrim",
+     "opacity": 0.82,
+     "pad_x_pct": 2,
+     "pad_y_pct": 1,
+     "radius_pct": 0.6
+    },
+    "motion": {
+     "mark": {
+      "color": "accent",
+      "height_em": 0.09,
+      "offset_em": 0.05
+     },
+     "tracks": [
+      {
+       "target": "box",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 200,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "line",
+       "stagger": {
+        "each_ms": 110
+       },
+       "keys": [
+        {
+         "t": 80,
+         "opacity": 0,
+         "y_em": 0.7
+        },
+        {
+         "t": 520,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 700,
+         "tint": 0,
+         "mark": 0
+        },
+        {
+         "t": 880,
+         "tint": 1,
+         "ease": "cubic_out"
+        },
+        {
+         "t": 1100,
+         "mark": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -240,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "hook_marker_sweep",
+   "layer": "hook",
+   "name": "Gancho con marcador",
+   "description": "El texto aparece y un marcador del color de acento barre por detrás de las palabras de énfasis, como resaltador.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 90,
+   "spec": {
+    "engine": "html",
+    "size_pct": 5.2,
+    "min_size_pct": 2.8,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "top",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "fade",
+    "duration_ms": 300,
+    "exit_ms": 240,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "motion": {
+     "mark": {
+      "color": "accent",
+      "height_em": 0.62,
+      "offset_em": 0.12
+     },
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.25
+        },
+        {
+         "t": 300,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 450,
+         "mark": 0
+        },
+        {
+         "t": 850,
+         "mark": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -240,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "hook_focus_spring",
+   "layer": "hook",
+   "name": "Gancho que enfoca con resorte",
+   "description": "El gancho entra grande y desenfocado y se asienta con un resorte corto; el énfasis se ilumina después.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 100,
+   "spec": {
+    "engine": "html",
+    "size_pct": 5.6,
+    "min_size_pct": 2.4,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.08,
+    "anchor": "top",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "uppercase": true,
+    "entry": "punch",
+    "duration_ms": 320,
+    "scale_from": 1.3,
+    "blur_from": 5,
+    "exit_ms": 220,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 160,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "text",
+       "keys": [
+        {
+         "t": 0,
+         "scale": 1.3,
+         "blur_em": 0.08
+        },
+        {
+         "t": 620,
+         "scale": 1,
+         "blur_em": 0,
+         "ease": "spring:170,14,1"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 500,
+         "tint": 0
+        },
+        {
+         "t": 720,
+         "tint": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -220,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "role_html_slide",
+   "layer": "role",
+   "name": "Rótulo que desliza",
+   "description": "Nombre y rol entran deslizando desde el borde izquierdo seguro, con un fundido corto.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 60,
+   "spec": {
+    "engine": "html",
+    "size_pct": 2.4,
+    "min_size_pct": 1.8,
+    "max_lines": 3,
+    "max_width_pct": 80,
+    "line_height": 1.2,
+    "color": "text_body",
+    "bold": true,
+    "entry": "slide",
+    "duration_ms": 300,
+    "slide_from_pct": 2,
+    "exit_ms": 250,
+    "box": {
+     "color": "scrim",
+     "opacity": 0.85,
+     "pad_x_pct": 1.8,
+     "pad_y_pct": 0.7,
+     "radius_pct": 1.2
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "x_em": -0.8
+        },
+        {
+         "t": 300,
+         "opacity": 1,
+         "x_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "role_html_wipe",
+   "layer": "role",
+   "name": "Rótulo con barrido",
+   "description": "La caja se abre de izquierda a derecha y el texto aparece encima.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "size_pct": 2.4,
+    "min_size_pct": 1.8,
+    "max_lines": 3,
+    "max_width_pct": 80,
+    "line_height": 1.2,
+    "color": "text_body",
+    "bold": true,
+    "entry": "mask",
+    "duration_ms": 320,
+    "exit_ms": 250,
+    "box": {
+     "color": "scrim",
+     "opacity": 0.88,
+     "pad_x_pct": 1.8,
+     "pad_y_pct": 0.7,
+     "radius_pct": 0.6
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "box",
+       "keys": [
+        {
+         "t": 0,
+         "clip_r": 1
+        },
+        {
+         "t": 260,
+         "clip_r": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "text",
+       "keys": [
+        {
+         "t": 120,
+         "opacity": 0
+        },
+        {
+         "t": 320,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "role_html_rule",
+   "layer": "role",
+   "name": "Rótulo con filete",
+   "description": "Un filete de la marca se dibuja sobre el nombre y el texto sube apenas.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 80,
+   "spec": {
+    "engine": "html",
+    "size_pct": 2.4,
+    "min_size_pct": 1.8,
+    "max_lines": 3,
+    "max_width_pct": 80,
+    "line_height": 1.2,
+    "color": "text_body",
+    "bold": false,
+    "entry": "draw",
+    "duration_ms": 330,
+    "exit_ms": 250,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "rule": {
+     "color": "rule",
+     "width_pct": 10,
+     "thickness_pct": 0.25,
+     "gap_pct": 0.6,
+     "position": "above"
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "rule",
+       "keys": [
+        {
+         "t": 0,
+         "scale_x": 0
+        },
+        {
+         "t": 260,
+         "scale_x": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "text",
+       "keys": [
+        {
+         "t": 80,
+         "opacity": 0,
+         "y_em": 0.3
+        },
+        {
+         "t": 330,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "role_html_focus",
+   "layer": "role",
+   "name": "Rótulo que enfoca",
+   "description": "El rótulo aparece con un desenfoque que se aclara, sin moverse.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 90,
+   "spec": {
+    "engine": "html",
+    "size_pct": 2.4,
+    "min_size_pct": 1.8,
+    "max_lines": 3,
+    "max_width_pct": 80,
+    "line_height": 1.2,
+    "color": "text_body",
+    "bold": false,
+    "entry": "fade",
+    "duration_ms": 280,
+    "exit_ms": 220,
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "blur_em": 0.12
+        },
+        {
+         "t": 280,
+         "opacity": 1,
+         "blur_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -220,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "role_html_card",
+   "layer": "role",
+   "name": "Tarjeta de rol en dos líneas",
+   "description": "Nombre arriba y rol debajo (corta en « — »); la tarjeta sube y cada línea aparece en orden.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 100,
+   "spec": {
+    "engine": "html",
+    "size_pct": 2.3,
+    "min_size_pct": 1.7,
+    "max_lines": 4,
+    "max_width_pct": 80,
+    "line_height": 1.25,
+    "color": "text_body",
+    "split_on": " — ",
+    "bold": true,
+    "entry": "rise",
+    "duration_ms": 340,
+    "exit_ms": 250,
+    "box": {
+     "color": "scrim",
+     "opacity": 0.88,
+     "pad_x_pct": 2,
+     "pad_y_pct": 0.9,
+     "radius_pct": 0.8
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.4
+        },
+        {
+         "t": 260,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "line",
+       "stagger": {
+        "each_ms": 40
+       },
+       "keys": [
+        {
+         "t": 60,
+         "opacity": 0
+        },
+        {
+         "t": 220,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "caption_html_pop",
+   "layer": "caption",
+   "name": "Subtítulos que saltan",
+   "description": "Cada grupo entra con un salto corto; la palabra que suena va en el acento y un poco más grande.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 40,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.5,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.2
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1.08
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "scale": 0.9
+        },
+        {
+         "t": 180,
+         "opacity": 1,
+         "scale": 1,
+         "ease": "back_out"
+        }
+       ]
+      }
+     ]
+    },
+    "hold_gap_ms": 450,
+    "max_cps": 17
+   }
+  },
+  {
+   "preset_key": "caption_html_rise",
+   "layer": "caption",
+   "name": "Subtítulos palabra a palabra",
+   "description": "Las palabras del grupo suben una tras otra; la que suena va en el acento.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 50,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.5,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.2
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1.06
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 45
+       },
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.35
+        },
+        {
+         "t": 200,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      }
+     ]
+    },
+    "hold_gap_ms": 450,
+    "max_cps": 17
+   }
+  },
+  {
+   "preset_key": "caption_html_box",
+   "layer": "caption",
+   "name": "Subtítulos en caja que sube",
+   "description": "El grupo sube sobre una caja de la marca; la palabra que suena en el acento.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 60,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.4,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "box": {
+     "color": "scrim",
+     "opacity": 0.78,
+     "pad_x_pct": 1.6,
+     "pad_y_pct": 0.6,
+     "radius_pct": 0.8
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.4
+        },
+        {
+         "t": 200,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    },
+    "hold_gap_ms": 450,
+    "max_cps": 17
+   }
+  },
+  {
+   "preset_key": "caption_html_focus",
+   "layer": "caption",
+   "name": "Subtítulos que enfocan",
+   "description": "Cada grupo aparece con un desenfoque que se aclara; sin caja, sólo sombra.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "group_min": 3,
+    "group_max": 4,
+    "max_gap_ms": 700,
+    "size_pct": 3.4,
+    "min_size_pct": 2.6,
+    "max_lines": 2,
+    "bold": false,
+    "line_height": 1.15,
+    "color": "text",
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.15,
+     "alpha": 0.6
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "blur_em": 0.1
+        },
+        {
+         "t": 160,
+         "opacity": 1,
+         "blur_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      }
+     ]
+    },
+    "hold_gap_ms": 450,
+    "max_cps": 17
+   }
+  },
+  {
+   "preset_key": "caption_html_bold",
+   "layer": "caption",
+   "name": "Subtítulos grandes en mayúsculas",
+   "description": "Grupos cortos en mayúsculas, más grandes; cada palabra entra con un golpe breve.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 80,
+   "spec": {
+    "engine": "html",
+    "group_min": 2,
+    "group_max": 3,
+    "max_gap_ms": 700,
+    "size_pct": 4.2,
+    "min_size_pct": 2.8,
+    "max_lines": 2,
+    "bold": true,
+    "line_height": 1.15,
+    "color": "text",
+    "uppercase": true,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.24
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "active_word": {
+     "color": "accent",
+     "scale": 1.1
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 60
+       },
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "scale": 1.25
+        },
+        {
+         "t": 160,
+         "opacity": 1,
+         "scale": 1,
+         "ease": "expo_out"
+        }
+       ]
+      }
+     ]
+    },
+    "hold_gap_ms": 450,
+    "max_cps": 17
+   }
+  },
+  {
+   "preset_key": "key_title_stamp_spring",
+   "layer": "key_title",
+   "name": "Sello con resorte",
+   "description": "La frase clave cae como un sello sobre una caja y se asienta con un resorte corto.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 40,
+   "spec": {
+    "engine": "html",
+    "size_pct": 4.4,
+    "min_size_pct": 2.8,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.1,
+    "anchor": "center",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "uppercase": true,
+    "entry": "punch",
+    "duration_ms": 300,
+    "scale_from": 1.25,
+    "blur_from": 4,
+    "exit_ms": 250,
+    "box": {
+     "color": "scrim",
+     "opacity": 0.85,
+     "pad_x_pct": 2.2,
+     "pad_y_pct": 1,
+     "radius_pct": 0.4
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 120,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "scale": 1.25,
+         "blur_em": 0.06
+        },
+        {
+         "t": 560,
+         "scale": 1,
+         "blur_em": 0,
+         "ease": "spring:200,16,1"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "key_title_line_reveal",
+   "layer": "key_title",
+   "name": "Título que se descubre por líneas",
+   "description": "Cada línea se descubre de izquierda a derecha, escalonada, con el filete de la marca encima.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 50,
+   "spec": {
+    "engine": "html",
+    "size_pct": 4.6,
+    "min_size_pct": 3.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "center",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "mask",
+    "duration_ms": 450,
+    "exit_ms": 250,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "rule": {
+     "color": "rule",
+     "width_pct": 12,
+     "thickness_pct": 0.3,
+     "gap_pct": 1.2,
+     "position": "above"
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "rule",
+       "keys": [
+        {
+         "t": 0,
+         "scale_x": 0
+        },
+        {
+         "t": 400,
+         "scale_x": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "line",
+       "stagger": {
+        "each_ms": 140
+       },
+       "keys": [
+        {
+         "t": 100,
+         "clip_r": 1
+        },
+        {
+         "t": 560,
+         "clip_r": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "key_title_marker",
+   "layer": "key_title",
+   "name": "Título con marcador",
+   "description": "La frase aparece y un marcador del acento barre por detrás de las palabras de énfasis.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 60,
+   "spec": {
+    "engine": "html",
+    "size_pct": 4.6,
+    "min_size_pct": 3.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "center",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "fade",
+    "duration_ms": 300,
+    "exit_ms": 250,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "motion": {
+     "mark": {
+      "color": "accent",
+      "height_em": 0.62,
+      "offset_em": 0.12
+     },
+     "tracks": [
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 40
+       },
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.3
+        },
+        {
+         "t": 320,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 500,
+         "mark": 0
+        },
+        {
+         "t": 900,
+         "mark": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "key_title_zoom_words",
+   "layer": "key_title",
+   "name": "Título palabra a palabra con zoom",
+   "description": "Cada palabra entra desde un poco más grande y desenfocada; el énfasis toma el acento.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "size_pct": 4.6,
+    "min_size_pct": 3.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.12,
+    "anchor": "center",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "entry": "pop_words",
+    "duration_ms": 400,
+    "exit_ms": 250,
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "motion": {
+     "tracks": [
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 80
+       },
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "scale": 1.35,
+         "blur_em": 0.08
+        },
+        {
+         "t": 340,
+         "opacity": 1,
+         "scale": 1,
+         "blur_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 600,
+         "tint": 0
+        },
+        {
+         "t": 800,
+         "tint": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -250,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "cta_pill_pulse",
+   "layer": "cta",
+   "name": "Píldora que late",
+   "description": "CTA en una píldora del acento que entra con resorte y late suave cada 2 s para que no se ignore.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 40,
+   "spec": {
+    "engine": "html",
+    "size_pct": 3.8,
+    "min_size_pct": 2.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.15,
+    "anchor": "above_captions",
+    "align": "center",
+    "color": "scrim",
+    "emphasis_color": "accent",
+    "box": {
+     "color": "accent",
+     "opacity": 1,
+     "pad_x_pct": 3,
+     "pad_y_pct": 1.2,
+     "radius_pct": 3
+    },
+    "entry": "pop",
+    "duration_ms": 300,
+    "scale_from": 0.8,
+    "exit_ms": 200,
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "scale": 0.8
+        },
+        {
+         "t": 120,
+         "opacity": 1,
+         "ease": "cubic_out"
+        },
+        {
+         "t": 520,
+         "scale": 1,
+         "ease": "spring:180,12,1"
+        }
+       ]
+      },
+      {
+       "target": "box",
+       "repeat": {
+        "every_ms": 2000
+       },
+       "keys": [
+        {
+         "t": 900,
+         "scale": 1
+        },
+        {
+         "t": 1150,
+         "scale": 1.05,
+         "ease": "sine_in_out"
+        },
+        {
+         "t": 1400,
+         "scale": 1,
+         "ease": "sine_in_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -200,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "cta_slide_in",
+   "layer": "cta",
+   "name": "Tarjeta que entra de lado",
+   "description": "La tarjeta entra desde la derecha y se asienta; el filete se dibuja después.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 50,
+   "spec": {
+    "engine": "html",
+    "size_pct": 3.6,
+    "min_size_pct": 2.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.15,
+    "anchor": "above_captions",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "box": {
+     "color": "scrim",
+     "opacity": 0.9,
+     "pad_x_pct": 2.6,
+     "pad_y_pct": 1.2,
+     "radius_pct": 1
+    },
+    "rule": {
+     "color": "accent",
+     "width_pct": 10,
+     "thickness_pct": 0.3,
+     "gap_pct": 0.8,
+     "position": "above"
+    },
+    "entry": "slide",
+    "duration_ms": 380,
+    "slide_from_pct": 3,
+    "exit_ms": 220,
+    "motion": {
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "x_em": 1.6
+        },
+        {
+         "t": 200,
+         "opacity": 1,
+         "ease": "cubic_out"
+        },
+        {
+         "t": 520,
+         "x_em": 0,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "rule",
+       "keys": [
+        {
+         "t": 400,
+         "scale_x": 0
+        },
+        {
+         "t": 800,
+         "scale_x": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -220,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "cta_word_pop",
+   "layer": "cta",
+   "name": "Llamada palabra a palabra",
+   "description": "Cada palabra salta en orden sobre la tarjeta; un brillo la cruza cada 3 s.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 60,
+   "spec": {
+    "engine": "html",
+    "size_pct": 3.6,
+    "min_size_pct": 2.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.15,
+    "anchor": "above_captions",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "box": {
+     "color": "scrim",
+     "opacity": 0.9,
+     "pad_x_pct": 2.6,
+     "pad_y_pct": 1.2,
+     "radius_pct": 1
+    },
+    "entry": "pop_words",
+    "duration_ms": 420,
+    "exit_ms": 220,
+    "motion": {
+     "sheen": {
+      "color": "text",
+      "width_pct": 30,
+      "opacity": 0.18
+     },
+     "tracks": [
+      {
+       "target": "box",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0
+        },
+        {
+         "t": 200,
+         "opacity": 1,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "word",
+       "stagger": {
+        "each_ms": 45
+       },
+       "keys": [
+        {
+         "t": 100,
+         "opacity": 0,
+         "scale": 0.7
+        },
+        {
+         "t": 360,
+         "opacity": 1,
+         "scale": 1,
+         "ease": "back_out"
+        }
+       ]
+      },
+      {
+       "target": "sheen",
+       "repeat": {
+        "every_ms": 3000
+       },
+       "keys": [
+        {
+         "t": 1200,
+         "sheen": 0
+        },
+        {
+         "t": 2000,
+         "sheen": 1,
+         "ease": "sine_in_out"
+        },
+        {
+         "t": 2001,
+         "sheen": -1
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -220,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "preset_key": "cta_underline",
+   "layer": "cta",
+   "name": "Llamada con subrayado",
+   "description": "El texto aparece limpio, sin caja, y las palabras de énfasis se subrayan en el acento.",
+   "brand_id": null,
+   "active": true,
+   "status": "proposed",
+   "source": "motor_html_f2",
+   "sort": 70,
+   "spec": {
+    "engine": "html",
+    "size_pct": 3.6,
+    "min_size_pct": 2.2,
+    "max_lines": 4,
+    "bold": true,
+    "line_height": 1.15,
+    "anchor": "above_captions",
+    "align": "center",
+    "color": "text",
+    "emphasis_color": "accent",
+    "outline": {
+     "color": "#000000",
+     "width_pct": 0.16
+    },
+    "shadow": {
+     "color": "#000000",
+     "depth_pct": 0.12,
+     "alpha": 0.45
+    },
+    "entry": "fade",
+    "duration_ms": 300,
+    "exit_ms": 220,
+    "motion": {
+     "mark": {
+      "color": "accent",
+      "height_em": 0.1,
+      "offset_em": 0.04
+     },
+     "tracks": [
+      {
+       "target": "block",
+       "keys": [
+        {
+         "t": 0,
+         "opacity": 0,
+         "y_em": 0.4
+        },
+        {
+         "t": 320,
+         "opacity": 1,
+         "y_em": 0,
+         "ease": "cubic_out"
+        }
+       ]
+      },
+      {
+       "target": "emphasis",
+       "keys": [
+        {
+         "t": 450,
+         "tint": 0,
+         "mark": 0
+        },
+        {
+         "t": 650,
+         "tint": 1,
+         "ease": "cubic_out"
+        },
+        {
+         "t": 900,
+         "mark": 1,
+         "ease": "expo_out"
+        }
+       ]
+      },
+      {
+       "target": "block",
+       "from": "end",
+       "keys": [
+        {
+         "t": -220,
+         "opacity": 1
+        },
+        {
+         "t": 0,
+         "opacity": 0,
+         "ease": "quad_in"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
