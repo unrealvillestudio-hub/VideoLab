@@ -342,6 +342,23 @@ if (SHELL && FONT) {
     assert.equal(px(pngs[conTexto]), esperado, 'con texto');
     assert.equal(px(pngs[pausa]), esperado, `en la pausa (fotograma ${pausa})`);
   });
+  // RECORTE A LA ZONA SEGURA (F2, 2026-11-17; contrato §4 ter.4). Una entrada que agranda el bloque no sale de la zona
+  // segura ni tapa la franja: el sello entra a 1,25× y antes cubría la franja un par de fotogramas (medido en una muestra).
+  caso('una entrada que agranda el bloque no pinta fuera de la zona segura ni tapa la franja', async () => {
+    const tl = { key_titles: [{ text: 'Una frase clave bastante larga para el sello', at_ms: 0, dur_ms: 1500, preset_key: 'key_title_stamp_spring' }],
+      identity: TL().identity };
+    const s3 = buildScene(args({ typography: typo, durationMs: 1500, textLayers: tl }));
+    const b = s3.blocks[0];
+    assert.ok(b.rect.w * 1.25 > s3.safe.w, 'el sello agrandado tiene que pasar del ancho seguro para que la prueba valga');
+    const pngs = {};
+    await renderHtmlLayers({ scene: s3, fonts, browserPath: SHELL, mode: 'screenshot', encode: false, frames: 3, onFrame: (i, png) => { pngs[i] = png; } });
+    const { spawnSync } = await import('node:child_process');
+    const px = (png, x, y) => [...spawnSync('ffmpeg', ['-v', 'error', '-f', 'png_pipe', '-i', 'pipe:0', '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { input: png }).stdout];
+    const y = Math.round(b.rect.y + b.rect.h / 2);
+    assert.equal(px(pngs[1], s3.safe.x - 3, y)[3], 0, 'fuera de la zona segura no se pinta');
+    const sx = Math.floor(s3.strip.x + s3.strip.w / 2);
+    assert.equal(Buffer.from(px(pngs[1], sx, y)).toString('hex'), s3.strip.color.slice(1).toLowerCase() + 'ff', 'la franja sigue intacta');
+  });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
   caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {
