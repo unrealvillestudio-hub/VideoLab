@@ -20,7 +20,8 @@ const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const SEED = JSON.parse(readFileSync(join(RAIZ, 'docs/text_presets_seed.json'), 'utf8'));
 const PRESETS = SEED.rows;
 // F2 (2026-11-17): los estilos html del catálogo también aguantan el peor caso (abajo).
-const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
+const F2 = [...JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows,
+  ...JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f3.json'), 'utf8')).rows];   // F3 (rodillo) también aguanta el peor caso
 
 let fallos = 0;
 function caso(nombre, fn) {

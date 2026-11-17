@@ -18,6 +18,23 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 
 ---
 
+## 0 quater. Cifras en rodillo (2026-11-17)
+
+**Encargo de Sam (2026-11-17):** «implementa el contador de cifras dígito a dígito para los títulos clave».
+
+- **Qué hace:** cada cifra gira como un rodillo y cae en su valor, de izquierda a derecha (`spec.motion.roll`, contrato
+  v1.8.0, runtime 1.8.0). Prefijo, separadores y sufijo quedan quietos.
+- **Cómo:** cada dígito es una columna del ancho del dígito final, que reserva el lugar y queda invisible, más una tira
+  de dígitos que `seek` desplaza. La columna recorta sólo en vertical. Cada dígito ocupa 1,6 líneas para que los
+  vecinos no se asomen en reposo: con casillas de una línea se asomaban (*medido* en las muestras).
+- **Medido:**
+  - la pieza de prueba con el rodillo en sus tres títulos clave dio la misma huella de fotogramas y el mismo MP4 en dos
+    corridas;
+  - en navegador real, al terminar, cada tira muestra su dígito final;
+  - la palabra mide lo mismo que su texto escrito normal.
+- **Estilo:** `key_title_odometer` en `docs/html_presets_f3.json`, `proposed`. No entra en la rotación hasta que Sam lo
+  valide en el Orchestrator.
+
 ## 0 ter. Medida del impacto por estilo — mapeada, en espera de datos (2026-11-17)
 
 **Decisión de Sam (2026-11-17):** «Lo de las métricas deberá esperar a tener data, todas las cuentas son muy nuevas y no

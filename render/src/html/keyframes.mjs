@@ -30,6 +30,14 @@ export const PROPS = Object.freeze({
 export function validateMotion(motion, where = 'motion') {
   if (motion == null) return;
   if (typeof motion !== 'object' || !Array.isArray(motion.tracks)) throw new Error(`${where}.tracks debe ser una lista`);
+  if (motion.roll != null) {
+    // Contador dígito a dígito (rodillo, 2026-11-17): cada cifra gira `turns` vueltas completas antes de caer en su valor;
+    // `lag` es cuánto del avance del contador (0–1) se retrasa cada cifra respecto de la anterior, de izquierda a derecha.
+    const r = motion.roll;
+    if (typeof r !== 'object' || Array.isArray(r)) throw new Error(`${where}.roll debe ser un objeto`);
+    if (r.turns != null && !(Number.isInteger(Number(r.turns)) && r.turns >= 0 && r.turns <= 4)) throw new Error(`${where}.roll.turns debe ser un entero de 0 a 4`);
+    if (r.lag != null && !(Number(r.lag) >= 0 && Number(r.lag) <= 0.3)) throw new Error(`${where}.roll.lag debe estar entre 0 y 0,3`);
+  }
   motion.tracks.forEach((tr, i) => {
     const w = `${where}.tracks[${i}]`;
     if (!TARGETS.includes(tr?.target)) throw new Error(`${w}.target desconocido: ${tr?.target}`);

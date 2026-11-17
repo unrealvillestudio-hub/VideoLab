@@ -104,6 +104,8 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
       sheen: obj(motion?.sheen) ? { width_pct: num(motion.sheen.width_pct, 30), opacity: num(motion.sheen.opacity, 0.35) } : null,
       // Subrayado de énfasis (sólo con `motion.mark`): alto y separación de la base en em del bloque.
       mark: obj(motion?.mark) ? { height: Math.max(2, Math.round(m.px * num(motion.mark.height_em, 0.12))), offset: Math.round(m.px * num(motion.mark.offset_em, 0.08)) } : null,
+      // Contador dígito a dígito (`motion.roll`): las cifras giran como un rodillo en vez de contar en el texto.
+      roll: obj(motion?.roll) ? { turns: num(motion.roll.turns, 1), lag: num(motion.roll.lag, 0.12) } : null,
       uppercase: false,          // las palabras ya llegan con la caja de presentación
       tracks,
     };

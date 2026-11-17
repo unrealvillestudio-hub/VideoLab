@@ -316,6 +316,13 @@ el mismo píxel (medido en F1), y `text_layout.warnings` lleva `TEXT_CAPTURE_FAL
 curva (`linear`, familia Penner, `cubic-bezier(...)` o `spring:k,c,m`). Sin `motion`, la entrada sale de `entry` como en
 §4 ter.3. Los presets HTML de la F0 están en `docs/html_presets_f0.json`.
 
+**Cifras en rodillo** (v1.8.0): `spec.motion.roll = { turns?, lag? }`. Cada cifra de una palabra numérica gira como un
+rodillo y cae en su valor, de izquierda a derecha, al ritmo de la pista `number` (`count` de 0 a 1). `turns` son las
+vueltas completas antes de caer (entero de 0 a 4, por defecto 1) y `lag`, cuánto del avance se retrasa cada cifra
+respecto de la anterior (de 0 a 0,3, por defecto 0,12). Prefijo, separadores y sufijo quedan quietos, y la palabra mide
+lo mismo que su texto final. En el respaldo ASS se ignora. Primer estilo: `key_title_odometer`
+(`docs/html_presets_f3.json`, `proposed`).
+
 **Estilos en línea** (en `hook`, `key_titles[i]` y `cta`; mismo vocabulario que ImageLab):
 
 | Campo | Qué hace |
@@ -472,6 +479,9 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.8.0 (2026-11-17)** — Cifras en rodillo en el motor `html`: `spec.motion.roll` (§4 ter.5), runtime 1.8.0. Estilo
+  nuevo `key_title_odometer` (proposed). Encargo de Sam del 2026-11-17: «el contador de cifras dígito a dígito para los
+  títulos clave». Compatible hacia atrás: sin `roll`, las cifras cuentan en el texto como en v1.7.1.
 - **v1.7.1 (2026-11-17)** — Salida: `text_layout.frames_sha256` y `text_layout.host` (§4 ter, «Salida»). Diagnóstico:
   en el job real, el mismo pedido dio dos MP4 distintos con el motor `html` y Cloud Run mezcla Intel con AVX-512 y AMD
   sin AVX-512 en una misma ejecución (medido). Sólo añade campos; nada cambia en el pedido.
