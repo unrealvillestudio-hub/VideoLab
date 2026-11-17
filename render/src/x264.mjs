@@ -39,3 +39,19 @@ export function x264Args(cpuFlags = hostCpuFlags()) {
 
 /** Los de esta máquina, calculados una vez. */
 export const X264 = Object.freeze(x264Args());
+
+/**
+ * La máquina que dibujó, para la salida (`text_layout.host`). PURO sobre el texto de /proc/cpuinfo.
+ * Por qué existe (2026-11-17): con x264 ya fijado, dos ejecuciones del mismo pedido en Cloud Run volvieron a dar MP4
+ * distintos con el motor HTML, y Cloud Run mezcla Intel con AVX-512 y AMD sin AVX-512 en una misma ejecución (medido).
+ * Sin saber en qué máquina corrió cada job y la huella de lo que capturó, la diferencia no se puede atribuir.
+ */
+export function hostOf(cpuinfo) {
+  const lines = String(cpuinfo ?? '').split('\n');
+  const field = (name) => lines.find((l) => l.startsWith(name))?.split(':').slice(1).join(':').trim() ?? null;
+  const flags = (field('flags') ?? '').split(/\s+/).filter(Boolean);
+  return { cpu: field('model name'), avx512: flags.includes('avx512f'), x264_asm: x264AsmFor(flags) };
+}
+
+/** La de esta máquina, una vez. */
+export const HOST = Object.freeze((() => { try { return hostOf(readFileSync('/proc/cpuinfo', 'utf8')); } catch { return hostOf(''); } })());

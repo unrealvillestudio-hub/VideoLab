@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { x264AsmFor, x264Args, hostCpuFlags, X264_SAME_OUTPUT } from '../render/src/x264.mjs';
+import { x264AsmFor, x264Args, hostCpuFlags, hostOf, HOST, X264_SAME_OUTPUT } from '../render/src/x264.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 let fallos = 0;
@@ -23,6 +23,21 @@ function caso(nombre, fn) {
   try { fn(); console.log(`  ok  ${nombre}`); } catch (e) { fallos++; console.error(`  MAL ${nombre}\n${e.message}`); }
 }
 console.log('x264 — el mismo pedido da el mismo MP4 en cualquier máquina');
+
+caso('la máquina en la salida: modelo, AVX-512 y nivel de x264, leídos de /proc/cpuinfo (contrato v1.7.1)', () => {
+  const intel = 'processor\t: 0\nmodel name\t: Intel(R) Xeon(R) CPU @ 2.00GHz\nflags\t\t: fpu sse2 ssse3 sse4_2 avx avx2 avx512f avx512bw\n';
+  const amd = 'processor\t: 0\nmodel name\t: AMD EPYC 7B13\nflags\t\t: fpu sse2 ssse3 sse4_2 avx avx2\n';
+  assert.deepEqual(hostOf(intel), { cpu: 'Intel(R) Xeon(R) CPU @ 2.00GHz', avx512: true, x264_asm: 'avx2' });
+  assert.deepEqual(hostOf(amd), { cpu: 'AMD EPYC 7B13', avx512: false, x264_asm: 'avx2' });
+  assert.deepEqual(hostOf(''), { cpu: null, avx512: false, x264_asm: null });
+  assert.equal(typeof HOST.avx512, 'boolean');
+});
+
+caso('main.mjs pone en text_layout la huella de lo capturado y la máquina', () => {
+  const src = readFileSync(join(RAIZ, 'render/src/main.mjs'), 'utf8');
+  assert.match(src, /frames_sha256: r\.digest/);
+  assert.match(src, /frames_sha256: drawn\.frames_sha256 \?\? null, host: HOST/);
+});
 
 caso('nivel por máquina: con AVX-512 se usa AVX2 (nunca AVX-512); sin AVX2, el más alto de la lista; sin ninguno, null', () => {
   assert.equal(x264AsmFor(['sse2', 'ssse3', 'sse4_2', 'avx', 'avx2', 'avx512f', 'avx512bw']), 'avx2');

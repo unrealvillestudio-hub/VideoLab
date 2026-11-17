@@ -345,6 +345,10 @@ modo y el grosor son dato de la marca (`tokens.identity`): `mode` = `none` | `ed
 
 **Salida.** `text_layout` suma `engine` (`ass` | `html`), `capture` (`beginframe` | `screenshot` | `null`), `presets`
 (las `preset_key` usadas) y, por bloque, `align` y `segments` (tramos de posición por toma).
+Desde v1.7.1 suma además `frames_sha256` (huella de los fotogramas capturados por el motor `html`: sha256 de la lista de
+sha256 de cada PNG; `null` con ASS) y `host: { cpu, avx512, x264_asm }` (la máquina que dibujó). Sirven para atribuir
+una diferencia entre dos ejecuciones del mismo pedido: misma huella con MP4 distinto → la cadena de video; huella
+distinta → la captura.
 
 **Posición por toma.** Si un bloque cruza un corte y en algún tramo taparía una cara, la geometría lo parte en
 `segments` y lo coloca por tramo (con paso suave entre tramos en el motor `html`); la entrada va sólo en el primer tramo
@@ -468,6 +472,9 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.7.1 (2026-11-17)** — Salida: `text_layout.frames_sha256` y `text_layout.host` (§4 ter, «Salida»). Diagnóstico:
+  en el job real, el mismo pedido dio dos MP4 distintos con el motor `html` y Cloud Run mezcla Intel con AVX-512 y AMD
+  sin AVX-512 en una misma ejecución (medido). Sólo añade campos; nada cambia en el pedido.
 - **v1.7.0 (2026-11-17)** — Subtítulos y rol con las mecánicas de mercado de la ronda 2 de vigilancia, sólo en el motor `html`
   (en el respaldo ASS se ignoran): `active_word.box`, `active_word.pop`, `active_word.mode: 'keywords'` con
   `captions.keywords` en el pedido (≤ 12 textos de ≤ 60 caracteres), `reveal: 'spoken'` y `line_weights`. Runtime 1.7.0.
