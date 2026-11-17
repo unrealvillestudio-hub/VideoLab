@@ -24,7 +24,8 @@ import { findHeadlessShell } from './html/cdp.mjs';
 import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline } from './textlayers.mjs';
 import { X264, HOST } from './x264.mjs';
 import { createHash } from 'node:crypto';
-import { soundCues, soundMixArgs, loudnormArgs, soundKeysOf, mixGains, composeSoundSpec } from './sound.mjs';
+import { resolveSound, mixSound, measureLoudness, soundRequestOf } from './soundmix.mjs';
+export { soundRequestOf };
 
 const run = promisify(execFile);
 const LAB = 'videolab';
@@ -131,123 +132,28 @@ function textLayout(tlr, drawn) {
     ...(drawn.depth ? { depth: drawn.depth, depth_ms: drawn.depth_ms ?? null } : {}) };
 }
 
-/** Sonoridad integrada y pico verdadero (ebur128) del audio de `path`. */
-async function measureLoudness(path) {
-  const { stderr } = await run('ffmpeg', ['-hide_banner', '-nostats', '-i', path, '-af', 'ebur128=peak=true', '-f', 'null', '-'], { maxBuffer: 1 << 26 });
-  const sum = String(stderr).slice(String(stderr).lastIndexOf('Summary:'));
-  const n = (re) => { const m = sum.match(re); return m ? Number(m[1]) : null; };
-  return { lufs: n(/I:\s+(-?[\d.]+) LUFS/), true_peak_db: n(/Peak:\s+(-?[\d.]+) dBFS/) };
-}
-
 /**
- * Qué pide `text_layers.sound` (contrato v1.10.0, §4 ter.8). Forma v1.9.0 `{ preset_key }`: un preset de cualquier
- * familia, entero. Forma v1.10.0: `bed` y `effects` por separado; una familia ausente, null o `enabled: false` no suena.
- * Devuelve null si no suena nada. PURO.
+ * CAPA DE SONIDO del job: resuelve el pedido, mezcla con `render/src/soundmix.mjs` (el MISMO código que la escucha previa,
+ * `api/sound-preview.js`) y remplaza el audio sin tocar el video (`-c:v copy`). La voz sale del video LIMPIO (`clean`), no
+ * del ya dibujado: una generación AAC menos, y la escucha previa, que sólo tiene el limpio, mide lo mismo. Errores del pedido → RenderError; lo
+ * demás (VoiceLab, una huella, ffmpeg) → la pieza sale con su audio original y el aviso `SOUND_FALLBACK`.
  */
-export function soundRequestOf(sound) {
-  if (!sound || sound.enabled === false) return null;
-  const familias = sound.bed !== undefined || sound.effects !== undefined;
-  if (!familias) return { legacy: true, preset_key: sound.preset_key, bed: null, effects: null };
-  const on = (f) => (f && f.enabled !== false ? f : null);
-  const bed = on(sound.bed), effects = on(sound.effects);
-  return bed || effects ? { legacy: false, preset_key: null, bed, effects } : null;
-}
-
-/**
- * CAPA DE SONIDO (contrato v1.10.0; F1 2026-11-17, F2 el mismo día). Sobre el MP4 ya dibujado:
- *   1. lee los presets pedidos (`videolab_sound_presets`; la fila de la marca gana) y compone el spec de la mezcla
- *      (`composeSoundSpec`): cama del preset de fondo, momentos del preset de efectos, lo elegido de la librería y los
- *      volúmenes;
- *   2. pide a VoiceLab (por su `api_endpoint`, modo `sound`) los archivos y verifica el sha256 de cada uno;
- *   3. arma la hoja de entradas desde la MISMA escena del texto (`soundCues`), lleva la voz a la referencia, mezcla cama
- *      con ducking y efectos, fija la sonoridad final de la plataforma (dos pasadas) y remplaza el audio (`-c:v copy`).
- * Son errores del pedido: un preset desconocido o retirado, un preset de la familia equivocada, un sonido que la librería
- * no tiene o cuya función no es la del momento, y cambiar un momento que el preset de efectos no declara. Si falla lo
- * demás (VoiceLab, una huella, ffmpeg), la pieza sale con su audio original y el aviso `SOUND_FALLBACK`.
- */
-async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline, video, work }) {
-  const req = soundRequestOf(sound);
-  if (!req) return null;
-  const wanted = req.legacy ? [req.preset_key] : [req.bed?.preset_key, req.effects?.preset_key].filter(Boolean);
-  const rows = await S.select(cfg, `videolab_sound_presets?preset_key=in.(${wanted.map((k) => enc(k)).join(',')})&active=eq.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=*`);
-  const presetOf = (key, kind) => {
-    const of = rows.filter((r) => r.preset_key === key);
-    const row = of.find((r) => r.brand_id === brandId) ?? of.find((r) => r.brand_id == null);
-    if (!row || row.status === 'retired') throw new RenderError('VIDEOLAB_BAD_REQUEST', `el preset de sonido ${key} no existe o no está activo`);
-    if (kind && (row.kind ?? 'mixed') !== kind) throw new RenderError('VIDEOLAB_BAD_REQUEST', `el preset de sonido ${key} es de la familia ${row.kind ?? 'mixed'}, no ${kind}`);
-    return row;
-  };
-  let spec, chosen;
-  if (req.legacy) {
-    const row = presetOf(req.preset_key, null);
-    spec = row.spec;
-    chosen = { preset_key: row.preset_key, bed: null, effects: null };
-  } else {
-    const bedRow = req.bed ? presetOf(req.bed.preset_key, 'bed') : null;
-    const fxRow = req.effects ? presetOf(req.effects.preset_key, 'effects') : null;
-    try {
-      spec = composeSoundSpec({ bedSpec: bedRow?.spec ?? null, effectsSpec: fxRow?.spec ?? null, bed: req.bed ?? {}, effects: req.effects ?? {} });
-    } catch (e) {
-      if (e?.code === 'SOUND_SLOT_MISSING') throw new RenderError('VIDEOLAB_BAD_REQUEST', `${e.message} (${fxRow.preset_key})`);
-      throw e;
-    }
-    chosen = {
-      preset_key: null,
-      bed: bedRow ? { preset_key: bedRow.preset_key, sound_key: spec.bed?.sound ?? null, level_lu: req.bed.level_lu ?? 0 } : null,
-      effects: fxRow ? { preset_key: fxRow.preset_key, gain_db: req.effects.gain_db ?? 0, sounds_by_fn: req.effects.sounds_by_fn ?? {} } : null,
-    };
-  }
-  const keys = soundKeysOf(spec);
+async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline, video, clean, work }) {
+  const r = await resolveSound({ cfg, brandId, sound });
+  if (!r) return null;
   try {
-    const files = {}, lib = {};
-    if (keys.length) {
-      const [vl] = await S.select(cfg, `lab_configs?lab_key=eq.voicelab&select=api_endpoint`);
-      if (!vl?.api_endpoint) throw new Error('lab_configs no tiene el api_endpoint de voicelab');
-      // El modo `sound` sólo lee la librería y no cuesta: se puede repetir ante un corte de red.
-      const res = await S.fetchNamed('VoiceLab sound', `${vl.api_endpoint.replace(/\/+$/, '')}/api/execute`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brandId, stage: { mode: 'sound' }, params: { sounds: keys }, parent_job_id: jobId }),
-      }, { retry: true });
-      const out = await res.json().catch(() => ({}));
-      if (res.status === 422 && out.error_label === 'SOUND_NOT_FOUND') throw new RenderError('VIDEOLAB_BAD_REQUEST', `sonido pedido que la librería no tiene: ${String(out.error ?? '').slice(0, 160)}`);
-      if (!res.ok || !Array.isArray(out.sounds)) throw new Error(`VoiceLab ${res.status} ${out.error_label ?? ''} ${String(out.error ?? '').slice(0, 160)}`);
-      for (const snd of out.sounds) lib[snd.key] = snd;
-      // Lo elegido de la librería tiene que ser de la función del momento (la cama, música de fondo).
-      const fnOf = (k) => lib[k]?.fn;
-      if (req.bed?.sound_key && fnOf(req.bed.sound_key) && fnOf(req.bed.sound_key) !== 'music_bed') throw new RenderError('VIDEOLAB_BAD_REQUEST', `${req.bed.sound_key} no es un sonido de fondo (es ${fnOf(req.bed.sound_key)})`);
-      for (const [fn, k] of Object.entries(req.effects?.sounds_by_fn ?? {})) {
-        if (k && fnOf(k) && fnOf(k) !== fn) throw new RenderError('VIDEOLAB_BAD_REQUEST', `${k} es un sonido de ${fnOf(k)}, no de ${fn}`);
-      }
-      for (const snd of out.sounds) {
-        const bytes = await S.download(snd.url, `sonido ${snd.key}`);
-        const h = createHash('sha256').update(bytes).digest('hex');
-        if (h !== snd.sha256) throw new Error(`la huella de ${snd.key} no coincide (${h.slice(0, 12)} ≠ ${String(snd.sha256).slice(0, 12)})`);
-        files[snd.key] = join(work, `${snd.key}.wav`);
-        writeFileSync(files[snd.key], bytes);
-      }
-    }
-    const probe = await ffprobe(video);
-    const durationS = Number(probe.format.duration);
-    const voice = await measureLoudness(video);
-    const gains = mixGains({ spec, voiceLufs: voice.lufs, bedLufs: lib[spec?.bed?.sound]?.loudness_lufs });
-    const cues = soundCues(tlr.scene ?? { blocks: tlr.blocks }, timeline, spec);
-    const mix = join(work, 'mezcla.wav'), master = join(work, 'master.wav'), withSound = join(work, 'con_sonido.mp4');
-    await run('ffmpeg', soundMixArgs({ video, durationS, preset: spec, cues, files, out: mix, gains }), { maxBuffer: 1 << 26 });
-    const target = spec.master_by_platform?.[sound.platform ?? platform] ?? spec.master_by_platform?.default ?? {};
-    const { stderr } = await run('ffmpeg', loudnormArgs({ input: mix, target }), { maxBuffer: 1 << 26 });
-    const txt = String(stderr);
-    const measured = JSON.parse(txt.slice(txt.lastIndexOf('{'), txt.lastIndexOf('}') + 1));
-    await run('ffmpeg', loudnormArgs({ input: mix, target, measured, out: master }), { maxBuffer: 1 << 26 });
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-i', master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
+    const m = await mixSound({ cfg, jobId, brandId, ...r, sound, platform, scene: tlr.scene ?? { blocks: tlr.blocks }, timeline, video: clean, work, run });
+    const withSound = join(work, 'con_sonido.mp4');
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', video, '-i', m.master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy',
       '-c:a', 'aac', '-b:a', '160k', '-ar', '48000', '-ac', '2', '-movflags', '+faststart', '-shortest', withSound]);
     copyFileSync(withSound, video);
-    const final = await measureLoudness(video);
-    return { warnings: [], sound: { ...chosen, platform: sound.platform ?? platform, cues: cues.length, sounds: keys,
-      voice_lufs: voice.lufs, gains, master: final, audio_sha256: createHash('sha256').update(readFileSync(master)).digest('hex') } };
+    const final = await measureLoudness(video, run);
+    return { warnings: [], sound: { ...r.chosen, platform: m.platform, cues: m.cues.length, sounds: m.keys,
+      voice_lufs: m.voice.lufs, gains: m.gains, master: final, audio_sha256: createHash('sha256').update(readFileSync(m.master)).digest('hex') } };
   } catch (e) {
     if (e instanceof RenderError) throw e;
     return { warnings: [`SOUND_FALLBACK: la capa de sonido falló (${String(e?.message ?? e).slice(0, 200)}); la pieza sale con su audio original`],
-      sound: { ...chosen, applied: false } };
+      sound: { ...r.chosen, applied: false } };
   }
 }
 
@@ -278,7 +184,7 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
   const drawn = await drawTextLayers({ tlr, input: inPath, out: outPath, work });
   // Capa de sonido (v1.10.0): sólo si el pedido la trae y algo suena (soundRequestOf).
   const snd = prev.text_layers?.sound
-    ? await soundLayer({ cfg, jobId, brandId, sound: prev.text_layers.sound, platform: params.platform, tlr, timeline: prev.timeline ?? null, video: outPath, work })
+    ? await soundLayer({ cfg, jobId, brandId, sound: prev.text_layers.sound, platform: params.platform, tlr, timeline: prev.timeline ?? null, video: outPath, clean: inPath, work })
     : null;
   if (snd) drawn.warnings.push(...snd.warnings);
   const bytes = statSync(outPath).size;

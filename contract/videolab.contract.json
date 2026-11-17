@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -269,7 +269,31 @@
         "same_engine",
         "approximate"
       ],
-      "runtime": "GET /engine/<versión>/<módulo> — sólo ease.mjs, keyframes.mjs, runtime.mjs"
+      "runtime": "GET /engine/<versión>/<módulo> — sólo ease.mjs, keyframes.mjs, runtime.mjs",
+      "fit": "v1.12.0: cada bloque de scene.layout trae fit = { layer, max_lines, max_width_px, min_px, chars, chars_fit, fits }; si no cabe, el 400 VIDEOLAB_TEXT_DOES_NOT_FIT trae fit con label"
+    },
+    "sound_preview": {
+      "endpoint": "POST /api/sound-preview",
+      "since": "1.12.0",
+      "request_required": [
+        "brandId",
+        "params",
+        "previousOutputs",
+        "duration_ms"
+      ],
+      "previous_outputs_required": [
+        "text_layers.sound",
+        "base_video.url"
+      ],
+      "response": [
+        "status",
+        "audio",
+        "sound",
+        "elapsed_ms"
+      ],
+      "audio": "{ mime: audio/mp4, base64, bytes } — AAC 160k 48 kHz estéreo, el mismo códec que el render",
+      "sound": "lo elegido (bed, effects), platform, cues, sounds, voice_lufs, gains, master { lufs, true_peak_db }",
+      "same_code": "render/src/soundmix.mjs, el mismo módulo que el job; sin video, sin costo"
     },
     "caption_timing": {
       "hold_gap_ms": "el grupo espera al siguiente si la pausa es ≤ este valor (0 = sin espera)",

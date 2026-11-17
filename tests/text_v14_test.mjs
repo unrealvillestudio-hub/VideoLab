@@ -363,6 +363,29 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
       assert.ok(err8, 'el job tenía que fallar');
       assert.match(String(err8?.message ?? err8), /es de la familia effects, no bed/);
     });
+    // ESCUCHA EXACTA (v1.12.0): el mismo pedido por /api/sound-preview da el audio de la mezcla, con el mismo código.
+    {
+      const { default: preview, validatePreviewRequest } = await import('../api/sound-preview.js');
+      process.env.SUPABASE_URL = env.SUPABASE_URL; process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY;
+      const pedido = { brandId: BRAND, params: payload.params, duration_ms: 2000,
+        previousOutputs: { base_video: { url: 'https://media.test/clean.mp4' }, timeline: payload.previousOutputs.timeline,
+          text_layers: { ...tl, sound: { bed: { preset_key: 'sound_bed_prueba', level_lu: 3 }, effects: { preset_key: 'sound_fx_prueba', gain_db: -3, sounds_by_fn: { digit_land: null } } } } } };
+      const r = { code: 0, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, setHeader() {}, end() { return this; } };
+      await preview({ method: 'POST', body: pedido }, r);
+      caso('escucha exacta: el mismo pedido da el audio mezclado, con lo elegido y la sonoridad de la plataforma', () => {
+        assert.equal(r.code, 200, JSON.stringify(r.body).slice(0, 300));
+        assert.equal(r.body.audio.mime, 'audio/mp4');
+        assert.ok(Buffer.from(r.body.audio.base64, 'base64').length > 1000);
+        assert.deepEqual(r.body.sound.bed, out7.text_layout.sound.bed);
+        assert.deepEqual(r.body.sound.effects, out7.text_layout.sound.effects);
+        assert.deepEqual(r.body.sound.gains, out7.text_layout.sound.gains);
+        assert.ok(Math.abs(r.body.sound.master.lufs - -14) <= 1, `sonoridad ${r.body.sound.master.lufs}`);
+      });
+      caso('escucha exacta: sin sonido o sin video limpio es un error del pedido', () => {
+        assert.throws(() => validatePreviewRequest({ ...pedido, previousOutputs: { ...pedido.previousOutputs, text_layers: tl } }), /falta text_layers\.sound/);
+        assert.throws(() => validatePreviewRequest({ ...pedido, previousOutputs: { ...pedido.previousOutputs, base_video: null } }), /base_video\.url/);
+      });
+    }
     payload.previousOutputs.text_layers = tl;
   } finally { globalThis.fetch = fetchOriginal; }
 } else console.log('  --  job con el motor HTML: se salta (sin libass, sin chrome-headless-shell o sin DejaVu)');

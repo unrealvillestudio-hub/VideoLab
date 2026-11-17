@@ -58,7 +58,8 @@ export default async function handler(req, res) {
   } catch (e) {
     const label = e instanceof RenderError ? e.label : 'VIDEOLAB_PROVIDER_FAILED';
     const status = label === 'VIDEOLAB_BAD_REQUEST' || label === 'VIDEOLAB_TEXT_DOES_NOT_FIT' ? 400 : 500;
-    return res.status(status).json({ status: 'error', error_label: label, error: String(e?.message ?? e).slice(0, 400) });
+    // Medidor (v1.12.0): si el texto no entra, cuánto cabe con ese estilo.
+    return res.status(status).json({ status: 'error', error_label: label, error: String(e?.message ?? e).slice(0, 400), ...(e?.fit ? { fit: e.fit } : {}) });
   } finally {
     try { rmSync(work, { recursive: true, force: true }); } catch { /* nada */ }
   }

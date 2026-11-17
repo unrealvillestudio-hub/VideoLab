@@ -33,6 +33,9 @@
     },
     "api/text-styles.js": {
       "includeFiles": "render/src/**/*.mjs"
+    },
+    "api/sound-preview.js": {
+      "includeFiles": "{render/src/**/*.mjs,node_modules/ffmpeg-static/ffmpeg}"
     }
   }
 }
