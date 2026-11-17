@@ -274,6 +274,33 @@ if (SHELL && FONT) {
     const seq = await run('screenshot');
     assert.deepEqual(hs, seq.hs);
   });
+  // LA FRANJA NO SE APAGA EN LAS PAUSAS (2026-11-17). Fuera de los tramos con texto el capturador repite un fotograma de
+  // reposo; era un PNG transparente y, desde que la franja se dibuja en la página, se apagaba en cada pausa entre
+  // subtítulos (medido en el job real: 55 fotogramas sin franja). El reposo sale ahora de la página: la franja sigue ahí.
+  caso('la franja de identidad sigue en los fotogramas sin texto (pausas entre subtítulos)', async () => {
+    // Sólo gancho (0–2,6 s) y franja, en 4 s: de 2,6 s en adelante es una pausa sin texto.
+    const sc = buildScene(args({ typography: typo, durationMs: 4000, textLayers: { hook: TL().hook, identity: TL().identity } }));
+    assert.ok(sc.strip, 'la escena de prueba lleva franja');
+    const spans = textSpans(sc);
+    const total = Math.round((sc.durationMs / 1000) * sc.fps);
+    const enSpan = (i) => spans.some(([a, b]) => (i * 1000) / sc.fps >= a && (i * 1000) / sc.fps < b);
+    const pausa = [...Array(total).keys()].find((i) => !enSpan(i));
+    const conTexto = [...Array(total).keys()].find((i) => enSpan(i));
+    assert.ok(pausa != null && conTexto != null, 'la escena de prueba necesita una pausa sin texto');
+    const pngs = {};
+    await renderHtmlLayers({ scene: sc, fonts, browserPath: SHELL, mode: 'screenshot', encode: false, frames: Math.max(pausa, conTexto) + 1,
+      onFrame: (i, png) => { if (i === pausa || i === conTexto) pngs[i] = png; } });
+    // El color del píxel en medio de la franja, leído con ffmpeg (sin dependencias de PNG en Node).
+    const { spawnSync } = await import('node:child_process');
+    const px = (png) => {
+      const x = Math.floor(sc.strip.x + sc.strip.w / 2), y = Math.floor(sc.strip.y + sc.strip.h / 2);
+      const r = spawnSync('ffmpeg', ['-v', 'error', '-f', 'png_pipe', '-i', 'pipe:0', '-vf', `crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgba', 'pipe:1'], { input: png });
+      return [...r.stdout].map((v) => v.toString(16).padStart(2, '0')).join('');
+    };
+    const esperado = sc.strip.color.replace('#', '').toLowerCase() + 'ff';
+    assert.equal(px(pngs[conTexto]), esperado, 'con texto');
+    assert.equal(px(pngs[pausa]), esperado, `en la pausa (fotograma ${pausa})`);
+  });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
   caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {

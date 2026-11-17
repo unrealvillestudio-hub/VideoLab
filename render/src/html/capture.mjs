@@ -2,8 +2,9 @@
 //
 // chrome-headless-shell, lienzo del pedido, escala 1, fondo transparente. Para cada fotograma i se fija el
 // tiempo t = i / fps con `window.__vl.seek(t)` y se captura un PNG con alfa por CDP. El reloj real no interviene nunca:
-// el tiempo lo pone el capturador. Fuera de los tramos con texto no se abre el navegador: se repite un PNG transparente.
-// Los PNG van por una tubería a ffmpeg, que los monta sobre el video limpio con la franja de identidad y codifica con la
+// el tiempo lo pone el capturador. Fuera de los tramos con texto no se captura cada fotograma: se repite el fotograma de
+// reposo (la franja de identidad, si la hay, capturada una vez de la página; si no, un PNG transparente).
+// Los PNG van por una tubería a ffmpeg, que los monta sobre el video limpio (la franja de identidad ya va en la página) y codifica con la
 // especificación de salida del contrato (§5). Lo aprendido del núcleo de HyperFrames (Apache-2.0, ver docs/MOTOR_HTML.md):
 // PNG con `optimizeForSpeed: false` (el atajo rápido aplasta el alfa) y el fondo transparente fijado UNA vez por sesión.
 
@@ -93,8 +94,16 @@ export async function renderHtmlLayers({ scene, fonts, input, out, browserPath =
       ffDone = new Promise((res, rej) => ff.on('close', (c) => (c === 0 ? res() : rej(new Error(`ffmpeg ${c}: ${ffErr.slice(-800)}`)))));
     }
     const write = (buf) => new Promise((res, rej) => { if (!ff) return res(); ff.stdin.write(buf, (e) => (e ? rej(e) : res())); });
-    const blank = blankPng(W, H);
-    const blankHash = createHash('sha256').update(blank).digest('hex');
+    // Fotograma «de reposo» (fuera de los tramos con texto): lo que la página dibuja sin ningún bloque ni subtítulo, es
+    // decir, la franja de identidad (o nada). Se captura UNA vez desde la página, no se fabrica: antes era un PNG
+    // transparente, y desde que la franja se dibuja en la página (F1) desaparecía en cada pausa entre subtítulos
+    // (medido 2026-11-17 en el job real: 55 fotogramas sin franja). Sin franja, es el PNG transparente de siempre.
+    let blank, blankHash;
+    if (scene.strip) {
+      await page.evaluate('window.__vl.seek(-1)');
+      blank = await page.frame(true);
+    } else blank = blankPng(W, H);
+    blankHash = createHash('sha256').update(blank).digest('hex');
     const tc = performance.now();
     for (let i = 0; i < total; i++) {
       const t = (i * 1000) / fps;
