@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "test": "node tests/execute_test.mjs && node tests/sin_voseo_test.mjs && node tests/contrato_test.mjs && node tests/render_plan_test.mjs && node tests/render_ffmpeg_test.mjs && node tests/assemble_test.mjs && node tests/conversation_test.mjs && node tests/textlayers_test.mjs && node tests/html_engine_test.mjs && node tests/text_v14_test.mjs"
+    "test": "node tests/execute_test.mjs && node tests/sin_voseo_test.mjs && node tests/contrato_test.mjs && node tests/render_plan_test.mjs && node tests/render_ffmpeg_test.mjs && node tests/assemble_test.mjs && node tests/conversation_test.mjs && node tests/textlayers_test.mjs && node tests/html_engine_test.mjs && node tests/text_v14_test.mjs && node tests/x264_test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

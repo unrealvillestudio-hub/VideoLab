@@ -6,6 +6,10 @@
 // fuente y ningún color. La capa de texto la dibuja ImageLab (`/api/compose`, `output: 'text_layer'`).
 //
 // Determinista: la misma entrada da los mismos argumentos, carácter por carácter (lo prueba tests/render_plan_test.mjs).
+// Única lectura del entorno: `X264` (render/src/x264.mjs) lee una vez las banderas de CPU para elegir el juego de
+// instrucciones de x264 que da la misma salida en toda máquina; en una misma máquina, los argumentos no cambian.
+
+import { X264 } from './x264.mjs';
 
 export const SPEC = Object.freeze({
   fps: 30,
@@ -126,7 +130,7 @@ export function planRender({ preset, canvas, inputs }) {
   }
 
   args.push('-filter_complex', filters.join(';'), '-map', '[vout]', '-map', '[aout]',
-    '-c:v', SPEC.videoCodec, '-profile:v', 'high', '-pix_fmt', SPEC.pixelFormat, '-r', String(SPEC.fps),
+    '-c:v', SPEC.videoCodec, ...X264, '-profile:v', 'high', '-pix_fmt', SPEC.pixelFormat, '-r', String(SPEC.fps),
     '-preset', 'medium', '-crf', '20',
     '-c:a', SPEC.audioCodec, '-b:a', SPEC.audioBitrate, '-ar', String(SPEC.audioRate), '-ac', '2',
     '-t', String(durationS), '-movflags', '+faststart', inputs.out);

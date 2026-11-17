@@ -18,6 +18,7 @@ import { scenePage } from './page.mjs';
 import { textSpans } from './scene.mjs';
 import { openPage, findHeadlessShell } from './cdp.mjs';
 import { RenderError } from '../plan.mjs';
+import { X264 } from '../x264.mjs';
 
 /** PNG RGBA totalmente transparente de W×H (sin navegador). PURO. */
 export function blankPng(W, H) {
@@ -37,15 +38,15 @@ export function blankPng(W, H) {
 
 /**
  * Argumentos de ffmpeg: video limpio + PNG por la entrada estándar → MP4 de la especificación (§5). PURO.
- * `threads` FIJO a propósito: x264 elige sus hilos según las CPU de la máquina, y con otro número de hilos el MP4 sale
- * distinto byte a byte aunque los fotogramas sean idénticos (medido en la F0: misma huella de fotogramas con 4 y con 2
- * CPU, MP4 distinto). Con los hilos fijos, el mismo pedido da el mismo archivo en cualquier máquina.
+ * `x264`: hilos fijos y juego de instrucciones fijo (render/src/x264.mjs). Con otro número de hilos el MP4 sale distinto
+ * byte a byte aunque los fotogramas sean idénticos (medido en la F0: 4 frente a 2 CPU); con AVX-512 también (medido en
+ * el job real de la F1). Así, el mismo pedido da el mismo archivo en cualquier máquina.
  */
-export function overlayArgs({ input, fps, filters = [], out, threads = 2 }) {
+export function overlayArgs({ input, fps, filters = [], out, x264 = X264 }) {
   const post = [...filters, 'format=yuv420p'].join(',');
   return ['-y', '-loglevel', 'error', '-i', input, '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', 'pipe:0',
     '-filter_complex', `[1:v]format=rgba[o];[0:v][o]overlay=0:0:format=auto:eof_action=pass[m];[m]${post}[v]`,
-    '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', '-threads:v', String(threads), '-pix_fmt', 'yuv420p', '-r', String(fps),
+    '-map', '[v]', '-map', '0:a:0?', '-c:v', 'libx264', ...x264, '-pix_fmt', 'yuv420p', '-r', String(fps),
     '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k', '-movflags', '+faststart', out];
 }
 

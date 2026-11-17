@@ -5,6 +5,7 @@
 // especificación de salida (plan.mjs · SPEC). Así todas las salidas de VideoLab son iguales para el carril.
 
 import { SPEC, RenderError } from './plan.mjs';
+import { X264 } from './x264.mjs';
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
@@ -155,7 +156,7 @@ export function planAssemble({ preset, canvas, durationS, inputs }) {
   }
 
   args.push('-filter_complex', f.join(';'), '-map', '[vout]', '-map', '[aout]',
-    '-c:v', SPEC.videoCodec, '-profile:v', 'high', '-pix_fmt', SPEC.pixelFormat, '-r', String(SPEC.fps),
+    '-c:v', SPEC.videoCodec, ...X264, '-profile:v', 'high', '-pix_fmt', SPEC.pixelFormat, '-r', String(SPEC.fps),
     '-preset', 'medium', '-crf', '20',
     '-c:a', SPEC.audioCodec, '-b:a', SPEC.audioBitrate, '-ar', String(SPEC.audioRate), '-ac', '2',
     '-t', String(durationS), '-movflags', '+faststart', inputs.out);

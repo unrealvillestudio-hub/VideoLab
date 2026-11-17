@@ -20,6 +20,7 @@ import { brandFont } from './fonts.mjs';
 import { prepareTextLayers } from './textprep.mjs';
 import { renderHtmlLayers } from './html/capture.mjs';
 import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline } from './textlayers.mjs';
+import { X264 } from './x264.mjs';
 
 const run = promisify(execFile);
 const LAB = 'videolab';
@@ -428,7 +429,7 @@ export async function renderJob(jobId, env = process.env) {
       const cleanPath = join(work, 'clean.mp4');
       await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', joined, ...audioIn,
         '-filter_complex', `${aChain};${aCat};[0:v]format=yuv420p[vout]`, '-map', '[vout]', '-map', '[aout]',
-        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k',
+        '-c:v', 'libx264', ...X264, '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '160k',
         '-shortest', '-movflags', '+faststart', cleanPath], { maxBuffer: 1 << 26 });
       cleanVideo = { url: await S.upload(cfg, `${base}_clean.mp4`, readFileSync(cleanPath), 'video/mp4'), storage_path: `${base}_clean.mp4` };
       // 2) El final: las capas de texto editables, o la capa de ImageLab, encima del limpio; sin ninguna, el limpio.
@@ -436,7 +437,7 @@ export async function renderJob(jobId, env = process.env) {
         tlDrawn = await drawTextLayers({ tlr, input: cleanPath, out: outPath, work });
       } else if (layer) {
         await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', cleanPath, '-i', layer, '-filter_complex', '[0:v][1:v]overlay=0:0,format=yuv420p[vout]',
-          '-map', '[vout]', '-map', '0:a', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
+          '-map', '[vout]', '-map', '0:a', '-c:v', 'libx264', ...X264, '-pix_fmt', 'yuv420p', '-r', '30', '-c:a', 'copy', '-movflags', '+faststart', outPath], { maxBuffer: 1 << 26 });
       } else copyFileSync(cleanPath, outPath);
       durationS = pod.plan.totalMs / 1000;
     } else if (producer === 'render') {

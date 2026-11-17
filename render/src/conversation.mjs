@@ -9,6 +9,7 @@
 // Todo lo que distingue a un estudio o a una marca es dato: sillas, tomas, qué silla anima cada toma, el elenco
 // (`params.cast`, silla → persona) y el motor (`turn.engine`, si no `motion.avatar.engine` del preset).
 import { RenderError } from './plan.mjs';
+import { X264 } from './x264.mjs';
 
 const bad = (m) => { throw new RenderError('VIDEOLAB_BAD_REQUEST', m); };
 const str = (v) => typeof v === 'string' && v.trim().length > 0;
@@ -144,14 +145,14 @@ export function stillArgs({ image, seconds, canvas, focusX = 0.5, zoomPerFrame =
   const big = `scale=${Math.round(W * 1.1)}:${Math.round(H * 1.1)}:force_original_aspect_ratio=increase,crop=${Math.round(W * 1.1)}:${Math.round(H * 1.1)}:(iw-${Math.round(W * 1.1)})*${focusX}:(ih-${Math.round(H * 1.1)})/2`;
   return ['-y', '-framerate', '30', '-loop', '1', '-t', seconds.toFixed(3), '-i', image, '-vf',
     `${big},zoompan=z='1+${zoomPerFrame}*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,setsar=1`,
-    '-t', seconds.toFixed(3), '-an', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', out];
+    '-t', seconds.toFixed(3), '-an', '-c:v', 'libx264', ...X264, '-pix_fmt', 'yuv420p', '-r', '30', out];
 }
 
 /** Argumentos de ffmpeg de un corte ANIMADO: el clip de HeyGen al lienzo, recortado al tramo. PURO. */
 export function clipArgs({ clip, seconds, canvas, focusX = 0.5, move = null, out }) {
   // HeyGen puede devolver el clip ~0,1 s más corto que el audio: se sostiene el último cuadro hasta el tramo exacto.
   return ['-y', '-i', clip, '-vf', `${coverFilter(canvas, focusX)},tpad=stop_mode=clone:stop_duration=1${move ? `,${speakerMoveFilter(move, canvas)}` : ''}`, '-t', seconds.toFixed(3), '-an',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '30', out];
+    '-c:v', 'libx264', ...X264, '-pix_fmt', 'yuv420p', '-r', '30', out];
 }
 
 // ── TÉCNICAS DE ESCENA (contrato v1.2.0) ──
