@@ -1,0 +1,92 @@
+{
+  "_doc": "Presets de sonido de la F0 (2026-11-17). DATO: qué sonido de la librería de VoiceLab va a cada función del video, con qué ganancia y desfase, y la sonoridad final por plataforma. Las claves de sonido son de VoiceLab (sound/library.mjs, licencia propia). Nada nombra una marca. Propuesta: tabla videolab_sound_presets (ver docs/MOTOR_SONIDO.md). true_peak_db es el tope ANTES de codificar: la codificación AAC suma ~0,6 dB (medido en la F0), así que −2,0 deja el archivo final por debajo de −1,5 dBTP.",
+  "version": "f0",
+  "date": "2026-11-17",
+  "rows": [
+    {
+      "preset_key": "sound_soft_pulse",
+      "name": "Cama suave con efectos discretos",
+      "status": "proposed",
+      "brand_id": null,
+      "spec": {
+        "bed": {
+          "sound": "bed_soft_pulse",
+          "gain_db": -12,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_pop",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_chime",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_stamp_impact",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_tick",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_swish",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    }
+  ]
+}
