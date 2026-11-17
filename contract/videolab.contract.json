@@ -1,7 +1,7 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.4.0",
-  "date": "2026-11-16",
+  "version": "1.5.0",
+  "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
     "endpoint_source": "public.lab_configs.api_endpoint + execute_path (fila lab_key='videolab')",
@@ -243,7 +243,8 @@
       "TEXT_OVER_FACE",
       "TEXT_PLACE_CLAMPED",
       "TEXT_PLACED_OVER_FACE",
-      "TEXT_PLACED_OVERLAP"
+      "TEXT_PLACED_OVERLAP",
+      "TEXT_CAPTION_FAST"
     ],
     "preview": {
       "endpoint": "POST /api/text-scene",
@@ -266,6 +267,15 @@
         "approximate"
       ],
       "runtime": "GET /engine/<versión>/<módulo> — sólo ease.mjs, keyframes.mjs, runtime.mjs"
-    }
+    },
+    "caption_timing": {
+      "hold_gap_ms": "el grupo espera al siguiente si la pausa es ≤ este valor (0 = sin espera)",
+      "max_cps": "tope de lectura; se avisa con TEXT_CAPTION_FAST"
+    },
+    "role_motion_rule": "entrada ≤ 350 ms (última clave + escalonado por línea) y sin curvas con rebote (back_*, elastic_*, bounce_*, spring subamortiguado)",
+    "html_catalog": [
+      "docs/html_presets_f0.json",
+      "docs/html_presets_f2.json"
+    ]
   }
 }

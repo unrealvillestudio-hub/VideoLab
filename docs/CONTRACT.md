@@ -250,6 +250,8 @@ para que la migración de datos la copie tal cual.
 | `split_on` | texto | corta el texto en líneas en ese separador (rol en dos líneas) | — |
 | `group_min`, `group_max`, `max_gap_ms` | números | subtítulos: grupos de 3–4 palabras, corte en puntuación, cambio de persona o pausa | 3 / 4 / 700 |
 | `active_word` | `{ color, scale }` | subtítulos: la palabra que suena | `{ color: 'accent', scale: 1 }` |
+| `hold_gap_ms` | número | subtítulos (v1.5.0): si la pausa hasta el grupo siguiente es ≤ este valor, el grupo se queda en pantalla hasta que entra el siguiente | 0 (sin espera) |
+| `max_cps` | número | subtítulos (v1.5.0): tope de lectura en caracteres por segundo; un grupo que lo pasa no se corta, se avisa (`TEXT_CAPTION_FAST`) | sin tope |
 
 **Colores.** Un color es un **hueco** que se resuelve con el dato de la marca, `palette:<rol>` (sólo en filas de
 marca) o un hex neutro escrito en el dato (p. ej. negro de contorno). Huecos: `text` (`tokens.palette.headline` de
@@ -322,6 +324,11 @@ curva (`linear`, familia Penner, `cubic-bezier(...)` o `spring:k,c,m`). Sin `mot
 Reglas: coincidencia literal y sensible a mayúsculas; primera aparición sin solaparse; el orden de la lista es la
 prioridad; hasta 3 tramos de hasta 60 caracteres por campo (si no → `VIDEOLAB_BAD_REQUEST`). Un tramo que no aparece en
 el texto → aviso `TEXT_SPAN_NOT_FOUND` (no es error). La medida del bloque es conservadora con los estilos aplicados.
+
+**Rol con `motion` (v1.5.0).** La regla del rol —entrada en ≤ 350 ms y sin rebote— vale también para sus pistas: la
+última clave de cada pista de entrada (no `from: 'end'`, no `repeat`), más el escalonado, termina en ≤ 350 ms; el
+escalonado sólo por línea (acotado por `max_lines`); prohibidas las curvas `back_*`, `elastic_*`, `bounce_*` y `spring`
+subamortiguado. Si no → `VIDEOLAB_BAD_REQUEST`.
 
 **Alineación.** `align` = `left` | `center` | `right`, en el bloque del pedido o en el `spec` del preset (el pedido
 manda).
@@ -435,6 +442,11 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.5.0 (2026-11-17)** — F2 del motor (objetivo validado por Sam: 5 estilos html por capa, rotados entre
+  generaciones). Subtítulos: `hold_gap_ms` (el grupo espera al siguiente en pausas cortas) y `max_cps` (tope de lectura,
+  aviso `TEXT_CAPTION_FAST`), con una sola fuente de tiempos para ASS y HTML. La regla del rol (≤ 350 ms, sin rebote) se
+  aplica también a `spec.motion` (§4 ter.5). Catálogo de 22 estilos html nuevos en `docs/html_presets_f2.json`. Compatible
+  hacia atrás: los presets sin los campos nuevos dibujan igual que en v1.4.0.
 - **v1.4.0 (2026-11-16)** — Motor HTML propio (F1, objetivo validado por Sam: dibujo determinista, preset = plantilla
   como dato, 60 s en ≤ 5 min). `spec.engine` (`ass` por defecto y respaldo) y `spec.motion`; estilos en línea con el
   vocabulario de ImageLab (`emphasis_role`, `italic_spans`, `bold_spans`, `color_spans`); `align` con `right`; franja con

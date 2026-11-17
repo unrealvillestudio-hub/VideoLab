@@ -15,6 +15,7 @@
 import {
   buildTextLayers, resolveTextPreset, colorSlots, resolveColor, measureBlock, groupCaptionWords, timelineWords, zoomSpec,
   estimateMeasure, DEFAULT_FONT_ROLE,
+  captionTimes,
 } from '../textlayers.mjs';
 import { validateMotion, tracksFromEntry } from './keyframes.mjs';
 
@@ -111,6 +112,7 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
     const fam = familyOf(spec, 'caption');
     const words = timelineWords(timeline);
     const groups = groupCaptionWords(words, { min: num(spec.group_min, 3), max: num(spec.group_max, 4), maxGapMs: num(spec.max_gap_ms, 700) });
+    const { times } = captionTimes(groups, spec, durationMs);   // mismos tiempos que el dibujo ASS (hold_gap_ms)
     const aw = obj(spec.active_word) ? spec.active_word : {};
     const motion = obj(spec.motion) ? spec.motion : null;
     validateMotion(motion, `${row.preset_key}.motion`);
@@ -124,12 +126,12 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
       },
       active_scale: num(aw.scale, 1),
       tracks: motion ? motion.tracks : [],
-      groups: groups.map((g) => {
+      groups: groups.map((g, gi) => {
         const m = measureBlock({ text: g.map((w) => w.text).join(' '), spec, layer: 'caption', canvas, maxW: safe.w, measure, family: fam });
         let k = 0;
-        const gEnd = Math.min(durationMs, g[g.length - 1].end_ms);
+        const gEnd = times[gi].end_ms;
         return {
-          start_ms: g[0].start_ms, end_ms: gEnd, px: m.px, lh: m.lh, bold: m.bold, outline: m.outline,
+          start_ms: times[gi].start_ms, end_ms: gEnd, px: m.px, lh: m.lh, bold: m.bold, outline: m.outline,
           shadow: obj(spec.shadow) ? { depth: m.shadow, alpha: num(spec.shadow.alpha, 0.5) } : null,
           pad: { x: m.padX, y: m.padY }, ext: m.ext, w: m.w, h: m.h,
           box: obj(spec.box) ? { opacity: num(spec.box.opacity, 0.85), radius: Math.round(H * num(spec.box.radius_pct, 0.6) / 100) } : null,

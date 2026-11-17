@@ -19,6 +19,8 @@ import * as F from '../render/src/fonts.mjs';
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const SEED = JSON.parse(readFileSync(join(RAIZ, 'docs/text_presets_seed.json'), 'utf8'));
 const PRESETS = SEED.rows;
+// F2 (2026-11-17): los estilos html del catálogo también aguantan el peor caso (abajo).
+const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
 
 let fallos = 0;
 function caso(nombre, fn) {
@@ -518,7 +520,7 @@ const PEOR_CASO = {
 };
 caso('siembra: cada preset de gancho, título clave, CTA y rol aguanta el texto más largo del carril', () => {
   const safe = T.safeRect(SAFE, CANVAS);
-  for (const p of PRESETS.filter((r) => PEOR_CASO[r.layer])) {
+  for (const p of [...PRESETS, ...F2].filter((r) => PEOR_CASO[r.layer])) {
     const raw = typeof p.spec === 'string' ? JSON.parse(p.spec) : p.spec;
     // El rol se mide como lo mide buildTextLayers: con `split_on` admite 4 líneas y si no, 2 por defecto.
     const spec = p.layer === 'role' ? { max_lines: raw.split_on ? 4 : 2, ...raw } : raw;
