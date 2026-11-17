@@ -1,7 +1,13 @@
-# MOTOR HTML DE VIDEOLAB — F0 (prueba medida, sin producción)
+# MOTOR HTML DE VIDEOLAB — F0 (prueba medida) y F1 (conectado al job por preset)
 
-**Fecha:** 2026-11-16 · **Rama:** `claude/motor-html-f0` · **Estado:** prototipo **NO conectado al job**
-(`render/src/main.mjs` no lo importa; el `Dockerfile` no cambia; no se tocó la base, ni presets, ni piezas).
+**Estado vigente (F1, 2026-11-17):** conectado al job como opción por preset (`spec.engine: 'html'`; ASS por defecto y
+respaldo), con vista previa fiel y `chrome-headless-shell` en la imagen. Rama `claude/motor-html-f1`. **Sin desplegar**
+y sin presets `html` en la base: hasta el PR de dato y el despliegue con el sí de Sam, el job dibuja igual que antes.
+Lo nuevo está en §0; §1–§8 son la F0 y se conservan tal cual.
+
+> ⛔ NO OPERATIVO — estado de la F0, se conserva por trazabilidad:
+> **Fecha:** 2026-11-16 · **Rama:** `claude/motor-html-f0` · **Estado:** prototipo **NO conectado al job**
+> (`render/src/main.mjs` no lo importa; el `Dockerfile` no cambia; no se tocó la base, ni presets, ni piezas).
 
 **Objetivo validado por Sam (2026-11-16):** *«VideoLab dibuja las capas de texto con un motor HTML propio y
 determinista. Con el mismo pedido da el mismo video, cada preset es una plantilla guardada como dato, y el render de
@@ -11,6 +17,51 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 *reportado* = lo afirma un tercero, con quién y cuándo; *deducido* = inferencia, con de qué sale y qué lo confirmaría.
 
 ---
+
+## 0. F1 — lo que cambió y lo que se midió (2026-11-17)
+
+**Qué entró** (contrato v1.4.0, §4 ter.5 y §4 ter.6):
+- `spec.engine` por preset, con respaldo a ASS (`TEXT_ENGINE_FALLBACK`);
+- captura por CDP crudo (sin Playwright en ejecución) con beginFrame y screenshot de respaldo (`TEXT_CAPTURE_FALLBACK`);
+- `runtime.mjs` como módulo único del capturador y de la vista previa;
+- curva `spring:k,c,m`;
+- posición por toma (`segments`);
+- estilos en línea con la semántica de ImageLab;
+- `align: right`;
+- franja `edge_bottom` con `identity_role`;
+- `POST /api/text-scene` y `/engine/1.4.0/runtime.mjs`.
+
+**Banco final** (*medido* 2026-11-17). Material:
+- el mismo fixture y el mismo video limpio de §5, con 58,3 s y 1.748 fotogramas, de los que 1.693 llevan texto;
+- `--swap hook=hook_char_rise,cta=cta_card_spring,key_titles.0=key_title_counter,key_titles.1=key_title_counter`;
+- 2 CPU con `taskset -c 0,1`, sin otro proceso en la máquina.
+
+| Corrida | Total | Captura | Huella de fotogramas | MP4 (sha256) |
+|---|---|---|---|---|
+| beginFrame 1 | **119,5 s** | 117,1 s | `f561b72aaea413c6` | `609baa49f4198fc7…` |
+| beginFrame 2 | 120,3 s | 118,1 s | `f561b72aaea413c6` | `609baa49f4198fc7…` |
+| screenshot (respaldo) | 130,7 s | 128,9 s | `f561b72aaea413c6` | `609baa49f4198fc7…` |
+
+- **Tope de 300 s por 60 s:** se cumple con margen (119,5 s, el 40 %). En Cloud Run queda *deducido* hasta el job real.
+- **Mismo pedido, mismo video:** el MP4 es idéntico byte a byte entre las dos corridas **y entre beginFrame y screenshot**. El respaldo no cambia el video.
+- **Posición por toma en la pieza real:** el CTA, que antes quedaba sobre una cara (`TEXT_OVER_FACE`, §7 bis), ahora se parte en dos tramos. En el primero queda en y 293 hasta 54.905 ms; en el segundo, en y 773. Sin avisos.
+- **beginFrame frente a screenshot:** 9 % más rápido en el video completo.
+- El campo `cpus` del banco dice 4 porque `os.cpus()` no ve `taskset`; la afinidad sí fue de 2 CPU.
+
+**Defecto encontrado y corregido: el fotograma dependía del anterior.**
+- **Síntoma** (*medido*): llegar al fotograma 175 de la prueba en orden o saltando a él daba 1.233 px distintos, hasta 4/255.
+- **Lo que no era:** el DOM era idéntico en los dos caminos.
+- **Pista:** todos los píxeles distintos caían en una sola fila de tiles de 256 px.
+- **Causa:** el raster parcial del compositor, que reutiliza tiles del fotograma anterior.
+- **Arreglo:** `--disable-partial-raster` en `cdp.mjs`.
+- **Barrera:** caso «sin memoria» en `tests/html_engine_test.mjs`, visto en rojo sin la bandera.
+- **Límite:** en la vista previa del Orchestrator el navegador del operador no lleva esa bandera. Puede haber esas mismas diferencias mínimas en un tile al mover el cabezal (*deducido*). No afectan a la geometría ni al texto.
+
+**Pendiente** (en este orden, con el sí de Sam donde aplica):
+1. Merge del PR de código.
+2. PR de dato con los presets `html`.
+3. Despliegue del job con `claude-ops`, midiendo el tamaño de la imagen.
+4. Job real: ≤ 300 s y el mismo MP4 dos veces.
 
 ## 1. Resultado en una tabla
 
