@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
-import { digitCount, digitLandings, shotCuts, soundCues, soundMixArgs, loudnormArgs } from '../render/src/sound.mjs';
+import { digitCount, digitLandings, shotCuts, soundCues, soundMixArgs, loudnormArgs, soundKeysOf, mixGains } from '../render/src/sound.mjs';
+import { validateTextLayers } from '../render/src/textlayers.mjs';
 
 const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 let fallos = 0;
@@ -78,11 +79,40 @@ caso('sonoridad final: dos pasadas, la segunda lineal con lo medido; objetivo po
   assert.match(loudnormArgs({ input: 'm.wav', target: t, measured: m, out: 'o.wav' }).join(' '), /measured_I=-21\.4.*linear=true/);
 });
 
+const F1 = JSON.parse(readFileSync(join(RAIZ, 'docs/sound_presets_f1.json'), 'utf8')).rows;
+caso('presets F1: 6 caracteres, claves únicas, proposed y de sistema; cada uno nombra cama y sonido por función', () => {
+  assert.equal(F1.length, 6);
+  assert.equal(new Set(F1.map((r) => r.preset_key)).size, 6);
+  for (const r of F1) {
+    assert.equal(r.status, 'proposed'); assert.equal(r.brand_id, null);
+    assert.match(r.spec.bed.sound, /^bed_/);
+    for (const k of soundKeysOf(r.spec)) assert.match(k, /^(sfx|bed)_[a-z0-9_]+$/);
+    assert.ok(r.spec.master_by_platform.default.true_peak_db <= -2, 'tope antes de codificar');
+  }
+  assert.equal(new Set(F1.map((r) => r.spec.bed.sound)).size, 6, 'cada preset con su cama');
+});
+caso('soundKeysOf: cama y entradas, sin repetir', () => {
+  assert.deepEqual(soundKeysOf(P).sort(), ['bed_soft_pulse', 'sfx_block_entry_whoosh', 'sfx_cta_chime', 'sfx_cut_swish', 'sfx_digit_tick', 'sfx_stamp_impact', 'sfx_word_pop']);
+});
+caso('mixGains: la voz va a la referencia y la cama queda under_voice_lu por debajo, según lo medido', () => {
+  assert.deepEqual(mixGains({ spec: { voice_ref_lufs: -20, bed: { under_voice_lu: 14 } }, voiceLufs: -21.4, bedLufs: -18.8 }), { voice_db: 1.4, bed_db: -15.2 });
+  assert.deepEqual(mixGains({ spec: { bed: { gain_db: -12 } }, voiceLufs: null, bedLufs: null }), { voice_db: 0, bed_db: -12 });
+});
+caso('pedido: text_layers.sound con preset_key (y plataforma y enabled opcionales); lo demás se rechaza', () => {
+  const base = { hook: { text: 'Hola', preset_key: 'hook_x', start_ms: 0, end_ms: 1000 } };
+  validateTextLayers({ ...base, sound: { preset_key: 'sound_soft_pulse', platform: 'instagram', enabled: true } });
+  validateTextLayers({ ...base, sound: null });
+  assert.throws(() => validateTextLayers({ ...base, sound: { preset_key: 'X Y' } }), /sound\.preset_key/);
+  assert.throws(() => validateTextLayers({ ...base, sound: { preset_key: 'sound_x', enabled: 'sí' } }), /enabled/);
+  assert.throws(() => validateTextLayers({ sound: { preset_key: 'sound_x' } }), /no pide ninguna capa/);
+});
+
 caso('test N+1: el código de sonido y los presets de sonido no nombran ninguna marca', () => {
   const marcas = /neurone|nscf|forum|fphs|lucien|unrealville|unrlvl|vivose|vizos|d7|diamond|ivette|patricia|irja|sam_moreno/i;
   const code = readFileSync(join(RAIZ, 'render/src/sound.mjs'), 'utf8').replace(/\/\/.*$/gm, '');
   assert.ok(!marcas.test(code), 'render/src/sound.mjs nombra una marca');
   assert.ok(!marcas.test(JSON.stringify(PRESETS)), 'docs/sound_presets_f0.json nombra una marca');
+  assert.ok(!marcas.test(JSON.stringify(F1)), 'docs/sound_presets_f1.json nombra una marca');
   for (const r of PRESETS) assert.equal(r.brand_id, null);
 });
 

@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
+import { createHash as createHashSv } from 'node:crypto';
 import * as T from '../render/src/textlayers.mjs';
 import * as F from '../render/src/fonts.mjs';
 import { buildScene } from '../render/src/html/scene.mjs';
@@ -207,6 +208,7 @@ caso('posición por tramo de toma: sin sitio para todo el tramo pero sí en cada
 
 // ── El job con el motor HTML (y su respaldo), con Supabase, Storage y fuentes dobles ──────────────────────────────────
 const DEJAVU = '/usr/share/fonts/truetype/dejavu';
+const require_hash_hex = (b) => createHashSv('sha256').update(b).digest('hex');
 const hayLibass = spawnSync('ffmpeg', ['-hide_banner', '-filters'], { encoding: 'utf8' }).stdout?.includes(' subtitles ');
 const SHELL = findHeadlessShell();
 if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
@@ -215,6 +217,14 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
   execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=0x405060:s=1080x1920:r=30:d=2', '-f', 'lavfi', '-i', 'sine=f=300:d=2',
     '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', join(dir, 'base.mp4')]);
   const JOB = '00000000-0000-0000-0000-00000000f14a';
+  // Sonido (v1.9.0): dos archivos de prueba y un preset que los nombra; VoiceLab responde con URL y huella.
+  execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=880:d=0.2', '-ac', '2', '-ar', '48000', join(dir, 'tic.wav')]);
+  execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=110:d=3', '-ac', '2', '-ar', '48000', join(dir, 'cama.wav')]);
+  const shaOf = (f) => require_hash_hex(readFileSync(join(dir, f)));
+  const SOUND_SPEC = { voice_ref_lufs: -20, bed: { sound: 'bed_prueba', under_voice_lu: 14, duck_db: 9 },
+    cues: { block_entry: { by_layer: { hook: { sound: 'sfx_prueba', gain_db: -12 } } } },
+    master_by_platform: { default: { lufs: -14, true_peak_db: -2, lra: 11 } } };
+  let shaRoto = false;
   const tl = TL(); tl.key_titles = []; tl.cta = null; tl.roles[0].dur_ms = 1400; tl.hook.preset_key = 'hook_char_rise';
   tl.hook.italic_spans = ['cambia']; tl.identity = { strip: true, identity_role: 'mar' };
   const payload = { brandId: BRAND, pieceId: '00000000-0000-0000-0000-0000000000bb',
@@ -242,6 +252,17 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
     if (u === 'https://fonts.test/f-b.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans-Bold.ttf')));
     // La cursiva: cualquier TTF válido sirve (el sistema puede no traer la oblicua de DejaVu).
     if (u === 'https://fonts.test/f-i.ttf') return resp(readFileSync(join(DEJAVU, 'DejaVuSans.ttf')));
+    if (u.includes('videolab_sound_presets')) return resp(u.includes('preset_key=eq.sound_prueba') ? [{ preset_key: 'sound_prueba', brand_id: null, status: 'proposed', spec: SOUND_SPEC }] : []);
+    if (u.includes('lab_configs') && u.includes('lab_key=eq.voicelab')) return resp([{ api_endpoint: 'https://voicelab.test' }]);
+    if (u === 'https://voicelab.test/api/execute' && m === 'POST') {
+      const b = JSON.parse(init.body);
+      assert.equal(b.stage.mode, 'sound'); assert.deepEqual([...b.params.sounds].sort(), ['bed_prueba', 'sfx_prueba']);
+      return resp({ success: true, mode: 'sound', sounds: [
+        { key: 'bed_prueba', fn: 'music_bed', url: 'https://media.test/cama.wav', sha256: shaOf('cama.wav'), loudness_lufs: -18, license: 'propia' },
+        { key: 'sfx_prueba', fn: 'block_entry', url: 'https://media.test/tic.wav', sha256: shaRoto ? '0'.repeat(64) : shaOf('tic.wav'), loudness_lufs: null, license: 'propia' }] });
+    }
+    if (u === 'https://media.test/cama.wav') return resp(readFileSync(join(dir, 'cama.wav')));
+    if (u === 'https://media.test/tic.wav') return resp(readFileSync(join(dir, 'tic.wav')));
     if (u.includes('/storage/v1/object/')) { writeFileSync(join(dir, u.split('/').pop()), Buffer.from(init.body)); return resp({ Key: 'ok' }); }
     throw new Error(`fetch inesperado ${m} ${u}`);
   };
@@ -265,6 +286,33 @@ if (hayLibass && SHELL && existsSync(join(DEJAVU, 'DejaVuSans.ttf'))) {
         assert.ok(out2.text_layout.warnings.some((w) => w.startsWith('TEXT_ENGINE_FALLBACK')), out2.text_layout.warnings.join(' | '));
       });
     } finally { if (prev == null) delete process.env.HEADLESS_SHELL; else process.env.HEADLESS_SHELL = prev; }
+    // SONIDO (v1.9.0): el mismo pedido con text_layers.sound.
+    payload.previousOutputs.text_layers = { ...tl, sound: { preset_key: 'sound_prueba' } };
+    const out3 = await renderJob(JOB, env);
+    caso('sonido: VoiceLab da los archivos, se verifica su huella, se mezcla y el master queda en la sonoridad de la plataforma', () => {
+      const snd = out3.text_layout.sound;
+      assert.ok(snd && snd.applied !== false, JSON.stringify(out3.text_layout.warnings));
+      assert.equal(snd.preset_key, 'sound_prueba');
+      assert.ok(snd.cues >= 1, `entradas: ${snd.cues}`);
+      assert.ok(Math.abs(snd.master.lufs - -14) <= 1, `sonoridad final ${snd.master.lufs}`);
+      assert.ok(snd.master.true_peak_db <= -1.4, `pico ${snd.master.true_peak_db}`);
+      assert.match(snd.audio_sha256, /^[0-9a-f]{64}$/);
+      assert.ok(!out3.text_layout.warnings.some((w) => w.startsWith('SOUND_FALLBACK')));
+    });
+    shaRoto = true;
+    const out4 = await renderJob(JOB, env);
+    caso('sonido: una huella que no coincide no entra a la mezcla; la pieza sale con su audio y SOUND_FALLBACK', () => {
+      assert.equal(out4.text_layout.sound.applied, false);
+      assert.ok(out4.text_layout.warnings.some((w) => w.startsWith('SOUND_FALLBACK') && w.includes('huella')), out4.text_layout.warnings.join(' | '));
+    });
+    shaRoto = false;
+    payload.previousOutputs.text_layers = { ...tl, sound: { preset_key: 'sound_que_no_existe' } };
+    const err5 = await renderJob(JOB, env).then(() => null, (e) => e);
+    caso('sonido: un preset de sonido desconocido es un error del pedido (VIDEOLAB_BAD_REQUEST), no un aviso', () => {
+      assert.ok(err5, 'el job tenía que fallar');
+      assert.match(String(err5?.message ?? err5), /preset de sonido sound_que_no_existe/);
+    });
+    payload.previousOutputs.text_layers = tl;
   } finally { globalThis.fetch = fetchOriginal; }
 } else console.log('  --  job con el motor HTML: se salta (sin libass, sin chrome-headless-shell o sin DejaVu)');
 

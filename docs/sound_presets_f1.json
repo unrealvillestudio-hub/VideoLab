@@ -1,0 +1,541 @@
+{
+  "_doc": "Presets de sonido de la F1 (2026-11-17). DATO: qué sonido de la librería propia de VoiceLab (voicelab_sound_library, licencia propia) va a cada función del video, cuánto queda la cama bajo la voz (under_voice_lu, en LU bajo la voz normalizada a voice_ref_lufs), ganancia y desfase de cada efecto, y la sonoridad final por plataforma (true_peak_db es el tope ANTES de codificar: el AAC suma ~0,6 dB, medido en la F0). Seis caracteres distintos para que el carril rote entre generaciones. Nada nombra una marca. Se siembran como proposed: Sam los valida al escuchar las muestras.",
+  "version": "f1",
+  "date": "2026-11-17",
+  "rows": [
+    {
+      "preset_key": "sound_soft_pulse",
+      "name": "Pulso suave",
+      "description": "Cama con pulso grave y efectos discretos. Versátil, para la mayoría de las piezas.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 10,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_soft_pulse",
+          "under_voice_lu": 14,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_pop",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_chime",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_stamp_impact",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_tick",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_swish",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    },
+    {
+      "preset_key": "sound_warm_calm",
+      "name": "Calma cálida",
+      "description": "Colchón cálido sin ritmo y efectos suaves. Para testimonios y voces largas.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 20,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_warm_pad",
+          "under_voice_lu": 16,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_airy",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_airy",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_tap",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_pluck_hook",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_impact_soft_thump",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_click_wood",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_air_puff",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    },
+    {
+      "preset_key": "sound_bright_upbeat",
+      "name": "Animado y claro",
+      "description": "Arpegio de cuerda con ritmo, barridos rápidos y campanas brillantes. Para piezas con energía.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 30,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_pluck_bright",
+          "under_voice_lu": 13,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_swipe",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_swipe",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_bubble",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_sparkle",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_stamp_impact",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_blip",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_swish",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    },
+    {
+      "preset_key": "sound_friendly_marimba",
+      "name": "Amable",
+      "description": "Marimba ligera y efectos redondos. Para consejos y datos útiles.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 40,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_marimba_light",
+          "under_voice_lu": 14,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_whoosh",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_bubble",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_chime",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_impact_soft_thump",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_click_wood",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_air_puff",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    },
+    {
+      "preset_key": "sound_tension_numbers",
+      "name": "Tensión contenida",
+      "description": "Bordón grave con tic de reloj, subidas y golpe profundo. Para cifras, alertas y cuentas.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 50,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_tension_pulse",
+          "under_voice_lu": 14,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_riser",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_riser",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_tap",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_rise_ding",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_impact_deep_boom",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_tick",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_swish",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    },
+    {
+      "preset_key": "sound_lofi_close",
+      "name": "Cercana y relajada",
+      "description": "Teclas cálidas con ritmo relajado y efectos suaves. Para estilo de vida.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "sort": 60,
+      "spec": {
+        "voice_ref_lufs": -20,
+        "bed": {
+          "sound": "bed_lofi_keys",
+          "under_voice_lu": 13,
+          "duck_db": 9,
+          "release_ms": 500
+        },
+        "cues": {
+          "block_entry": {
+            "by_layer": {
+              "hook": {
+                "sound": "sfx_block_entry_airy",
+                "gain_db": -12,
+                "offset_ms": -150
+              },
+              "key_title": {
+                "sound": "sfx_block_entry_airy",
+                "gain_db": -15,
+                "offset_ms": -150
+              },
+              "role": {
+                "sound": "sfx_word_tap",
+                "gain_db": -20,
+                "offset_ms": 0
+              },
+              "cta": {
+                "sound": "sfx_cta_pluck_hook",
+                "gain_db": -15,
+                "offset_ms": 0
+              }
+            },
+            "by_text_preset": {
+              "key_title_stamp_spring": {
+                "sound": "sfx_impact_soft_thump",
+                "gain_db": -12,
+                "offset_ms": 0
+              }
+            }
+          },
+          "digit_land": {
+            "sound": "sfx_digit_click_wood",
+            "gain_db": -16,
+            "min_gap_ms": 40
+          },
+          "shot_cut": {
+            "sound": "sfx_cut_air_puff",
+            "gain_db": -26,
+            "offset_ms": -60,
+            "min_gap_ms": 800
+          }
+        },
+        "master_by_platform": {
+          "default": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "youtube": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "instagram": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "tiktok": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          },
+          "facebook": {
+            "lufs": -14,
+            "true_peak_db": -2.0,
+            "lra": 11
+          }
+        }
+      }
+    }
+  ]
+}

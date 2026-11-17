@@ -175,7 +175,8 @@ POST /api/execute                                  // mismo transporte: 202 + la
       captions?:   { enabled, preset_key, accent_role?, keywords? } | null,  // accent_role: rol de brand_palette; keywords (v1.7.0): ≤ 12 textos
       key_titles?: [{ text, at_ms, dur_ms, preset_key }],
       cta?:        { text, at_ms, dur_ms?, preset_key } | null,       // sin dur_ms, hasta el final
-      identity?:   { strip, identity_role?, strip_role? } } } }        // identity_role: rol de brand_palette (strip_role: alias heredado, §4 ter.5)
+      identity?:   { strip, identity_role?, strip_role? },        // identity_role: rol de brand_palette (strip_role: alias heredado, §4 ter.5)
+      sound?:      { preset_key, platform?, enabled? } | null } } }   // v1.9.0 (§4 ter.8): capa de sonido; no cuenta como capa de texto
 ```
 
 **Reglas de la forma** (las comprueba `api/execute` con la misma función que el job, `validateTextLayers`):
@@ -381,6 +382,34 @@ es una aproximación (`approximate`). `GET /engine/<versión>/<módulo>` sirve s
 `runtime.mjs`; otra versión u otro archivo → 404. Errores: forma inválida o texto que no cabe → 400 con su
 `error_label`; el resto → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
+### 4 ter.8 Capa de sonido — `text_layers.sound` (v1.9.0)
+
+Objetivo validado por Sam (2026-11-17): VideoLab mezcla una capa de sonido **propia** y determinista sobre la voz.
+Reparto: **VoiceLab es dueño de la librería** (`voicelab_sound_library`, modo `sound` de su `/api/execute`) y **VideoLab
+coloca y mezcla**. Diseño, licencias y medidas: `docs/MOTOR_SONIDO.md`.
+
+- **Pedido:** `text_layers.sound = { preset_key, platform?, enabled? }`.
+  - `preset_key` es una fila de `public.videolab_sound_presets`; la fila de la marca manda sobre la de sistema.
+  - `platform` elige el objetivo de sonoridad; sin él, se usa `params.platform`, y si tampoco hay, `default`.
+  - `enabled: false` apaga la capa sin borrar la elección.
+  - Sin `sound`, el video sale como hasta v1.8.0.
+- **Qué hace el job:**
+  1. pide a VoiceLab, por su `api_endpoint`, los archivos que nombra el preset;
+  2. **verifica el sha256** de cada uno;
+  3. arma la hoja de entradas desde la misma escena del texto: el inicio de cada bloque, cada cifra del rodillo que cae
+     y cada corte de toma;
+  4. lleva la voz a `voice_ref_lufs` y deja la cama `under_voice_lu` por debajo, usando la sonoridad medida;
+  5. mezcla la cama con ducking y los efectos con `adelay`;
+  6. fija la sonoridad final de la plataforma en dos pasadas (`master_by_platform`; `true_peak_db` es el tope antes de
+     codificar);
+  7. remplaza el audio sin recodificar el video.
+- **Salida:** `text_layout.sound = { preset_key, platform, cues, sounds, voice_lufs, gains, master: { lufs, true_peak_db },
+  audio_sha256 }`.
+- **Errores:**
+  - un preset desconocido o retirado es `VIDEOLAB_BAD_REQUEST`;
+  - si falla lo demás (VoiceLab, una huella, ffmpeg), la pieza sale con su audio original,
+    `text_layout.sound.applied = false` y el aviso `SOUND_FALLBACK`.
+
 ### 4 ter.7 Rotación de estilos — `GET /api/text-styles?brandId=…` (v1.6.0)
 
 Objetivo validado por Sam (2026-11-17): 5 estilos por capa que rotan entre generaciones. **VideoLab sugiere; quien
@@ -479,6 +508,9 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.9.0 (2026-11-17)** — Capa de sonido (§4 ter.8): `text_layers.sound`, salida `text_layout.sound` y aviso
+  `SOUND_FALLBACK`. Sonidos de la librería propia de VoiceLab; presets en `public.videolab_sound_presets` (6 de sistema,
+  `docs/sound_presets_f1.json`). Compatible hacia atrás: sin `sound`, igual que en v1.8.0.
 - **v1.8.0 (2026-11-17)** — Cifras en rodillo en el motor `html`: `spec.motion.roll` (§4 ter.5), runtime 1.8.0. Estilo
   nuevo `key_title_odometer` (proposed). Encargo de Sam del 2026-11-17: «el contador de cifras dígito a dígito para los
   títulos clave». Compatible hacia atrás: sin `roll`, las cifras cuentan en el texto como en v1.7.1.

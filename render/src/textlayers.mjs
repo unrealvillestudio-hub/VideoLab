@@ -244,6 +244,14 @@ export function validateTextLayers(tl, { words = null } = {}) {
     if (d.identity_role != null && d.strip_role != null && d.identity_role !== d.strip_role) bad('identity.identity_role y identity.strip_role (alias) dicen roles distintos');
     if (d.strip === true) layers++;
   }
+  // v1.9.0 (sonido F1): capa de sonido opcional. No cuenta como capa de texto: un pedido sólo con sonido no dibuja nada.
+  if (tl.sound != null) {
+    const s = tl.sound;
+    if (!obj(s)) bad('text_layers.sound debe ser un objeto o null');
+    if (!(typeof s.preset_key === 'string' && /^[a-z0-9_]{3,60}$/.test(s.preset_key))) bad('text_layers.sound.preset_key debe ser la clave de un preset de sonido');
+    if (s.platform != null && !(typeof s.platform === 'string' && /^[a-z0-9_]{2,30}$/.test(s.platform))) bad('text_layers.sound.platform debe ser el nombre de una plataforma');
+    if (s.enabled != null && typeof s.enabled !== 'boolean') bad('text_layers.sound.enabled debe ser true o false');
+  }
   if (!layers) bad('text_layers no pide ninguna capa');
   return tl;
 }

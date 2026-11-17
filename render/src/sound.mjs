@@ -84,7 +84,7 @@ export function soundCues(scene, timeline, preset) {
  * `adelay` en su milisegundo. `amix normalize=0`: el nivel no depende de cuántos sonidos haya. Sale WAV PCM sin
  * normalizar (la sonoridad final se fija en una segunda pasada lineal, `loudnormArgs`). PURO.
  */
-export function soundMixArgs({ video, durationS, preset, cues, files, out }) {
+export function soundMixArgs({ video, durationS, preset, cues, files, out, gains = null }) {
   const fmt = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
   const args = ['-y', '-loglevel', 'error', '-i', video];
   const f = [];
@@ -93,11 +93,11 @@ export function soundMixArgs({ video, durationS, preset, cues, files, out }) {
   if (bed) {
     args.push('-stream_loop', '-1', '-i', bed);
     const ratio = Math.max(1, Math.round(num(preset.bed.duck_db, 8) / 1.5));
-    f.push(`[0:a]${fmt},asplit=2[voz][sc]`);
-    f.push(`[${idx}:a]${fmt},atrim=0:${durationS},volume=${num(preset.bed.gain_db, -26)}dB[cama0]`);
+    f.push(`[0:a]${fmt},volume=${gains?.voice_db ?? 0}dB,asplit=2[voz][sc]`);
+    f.push(`[${idx}:a]${fmt},atrim=0:${durationS},volume=${gains?.bed_db ?? num(preset.bed.gain_db, -26)}dB[cama0]`);
     f.push(`[cama0][sc]sidechaincompress=threshold=0.02:ratio=${ratio}:attack=30:release=${num(preset.bed.release_ms, 500)}[cama]`);
     idx++;
-  } else f.push(`[0:a]${fmt}[voz]`);
+  } else f.push(`[0:a]${fmt},volume=${gains?.voice_db ?? 0}dB[voz]`);
   const labels = ['[voz]', ...(bed ? ['[cama]'] : [])];
   cues.forEach((c, k) => {
     const path = files[c.sound];
@@ -120,4 +120,27 @@ export function loudnormArgs({ input, target, measured = null, out = null }) {
   return ['-y', '-loglevel', 'error', '-i', input, '-af',
     `loudnorm=I=${I}:TP=${TP}:LRA=${LRA}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`,
     '-ar', '48000', '-c:a', 'pcm_s16le', out];
+}
+
+/** Las claves de sonido que nombra un preset (cama y entradas), sin repetir. PURO. */
+export function soundKeysOf(spec) {
+  const keys = new Set();
+  const walk = (v) => {
+    if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (k === 'sound' && typeof x === 'string') keys.add(x); else walk(x); }
+  };
+  walk(spec);
+  return [...keys];
+}
+
+/**
+ * Ganancias de la mezcla a partir de lo MEDIDO (F1): la voz se lleva a `voice_ref_lufs` y la cama queda
+ * `under_voice_lu` por debajo, usando la sonoridad de cada archivo que da la librería. Así el preset dice cuánto se
+ * oye la cama respecto de la voz, sea cual sea la voz de la pieza. Sin medida, la ganancia es 0 dB. PURO.
+ */
+export function mixGains({ spec, voiceLufs, bedLufs }) {
+  const ref = num(spec?.voice_ref_lufs, -20);
+  const voice_db = Number.isFinite(voiceLufs) ? Math.round((ref - voiceLufs) * 100) / 100 : 0;
+  const under = num(spec?.bed?.under_voice_lu, 14);
+  const bed_db = Number.isFinite(bedLufs) ? Math.round((ref - under - bedLufs) * 100) / 100 : num(spec?.bed?.gain_db, -12);
+  return { voice_db, bed_db };
 }

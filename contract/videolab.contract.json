@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -197,6 +197,7 @@
       "identity"
     ],
     "presets_table": "public.videolab_text_presets (brand_id NULL = sistema; la fila de la marca manda)",
+    "sound": "v1.9.0: text_layers.sound = { preset_key, platform?, enabled? }; presets en public.videolab_sound_presets; sonidos de VoiceLab modo sound (voicelab_sound_library); salida text_layout.sound; aviso SOUND_FALLBACK",
     "seed": "docs/text_presets_seed.json",
     "role_max_entry_ms": 350,
     "role_caption_margin_pct": 2,
