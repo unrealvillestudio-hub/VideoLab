@@ -407,6 +407,33 @@ es una aproximación (`approximate`). `GET /engine/<versión>/<módulo>` sirve s
 `runtime.mjs`; otra versión u otro archivo → 404. Errores: forma inválida o texto que no cabe → 400 con su
 `error_label`; el resto → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
+**Medidor de caracteres — `fit` (v1.12.0).** Cada bloque de `scene.layout` (gancho, títulos clave, CTA) trae
+`fit = { layer, max_lines, max_width_px, min_px, chars, chars_fit, fits }`: `chars_fit` es el comienzo más largo del
+texto que entra en `max_lines` líneas al tamaño mínimo, cortado entre palabras, medido con la MISMA función que decide
+`VIDEOLAB_TEXT_DOES_NOT_FIT`. Si el texto no cabe, el 400 trae `fit` con `label` (la capa que no entra), para que la
+ventana diga «caben hasta N caracteres» en vez de sólo «no cabe».
+
+### 4 ter.10 Escucha exacta de la mezcla — `POST /api/sound-preview` (v1.12.0)
+
+```
+POST /api/sound-preview                     // síncrono, sin job ni costo; tope 60 s
+{ brandId,
+  params: { platform, format: 'reel', canvas? },
+  previousOutputs: { text_layers /* con sound */, timeline?, base_video: { url /* https, el video limpio */ } },
+  duration_ms }
+→ 200 { status: 'ok', audio: { mime: 'audio/mp4', base64, bytes },
+        sound: { preset_key, bed, effects, platform, cues, sounds, voice_lufs, gains, master: { lufs, true_peak_db } },
+        elapsed_ms }
+```
+
+Devuelve SÓLO el audio de la mezcla: la voz del video limpio, el fondo y los efectos, con la misma composición, hoja de
+entradas, ganancias y sonoridad final que el render, porque el job y la escucha usan el mismo módulo
+(`render/src/soundmix.mjs`). Desde esta versión el job también toma la voz del video limpio (antes, del ya dibujado):
+una generación AAC menos y la misma medida en las dos. ffmpeg en Vercel: `ffmpeg-static` 5.1.0 (ffmpeg 5.0.1; el job
+usa el 5.1 de Debian), así que la sonoridad final puede diferir en décimas: `sound.master` dice la medida real.
+Errores: sin `text_layers.sound`, sin `base_video.url` https, todo apagado o texto que no cabe → 400
+`VIDEOLAB_BAD_REQUEST` / `VIDEOLAB_TEXT_DOES_NOT_FIT` (con `fit`); lo demás → 500 `VIDEOLAB_PROVIDER_FAILED`.
+
 ### 4 ter.8 Capa de sonido — `text_layers.sound` (v1.9.0; fondo y efectos por separado desde v1.10.0)
 
 **v1.10.0 (2026-11-17) — fondo y efectos por separado.** Decisiones de Sam del 2026-11-17: la ventana de Controles de
@@ -574,6 +601,10 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.12.0 (2026-11-17)** — Escucha exacta y medidor (decisión de Sam: «sí a la opción A y al medidor»). Componentes:
+  - `POST /api/sound-preview` en Vercel (§4 ter.10), con el mismo módulo de mezcla que el job;
+  - el job toma la voz del video limpio, no del dibujado;
+  - `fit` en cada bloque de `/api/text-scene` y en el 400 `VIDEOLAB_TEXT_DOES_NOT_FIT` (§4 ter.6).
 - **v1.11.0 (2026-11-17)** — Texto detrás de las personas (§4 ter.9). Componentes:
   - `spec.depth = { mode: 'behind_subject', max_cover }` en los estilos `html` de gancho, título clave y CTA;
   - recorte de personas con MediaPipe (Apache-2.0) dentro del render;

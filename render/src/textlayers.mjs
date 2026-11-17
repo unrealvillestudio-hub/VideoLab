@@ -625,6 +625,27 @@ export function measureBlock({ text, spec, layer, canvas, maxW, measure, family 
   nofit(`«${String(text).slice(0, 60)}» (${layer}) no entra en ${Math.round(maxW)} px con ${maxLines} línea(s) ni con el tamaño mínimo del preset`);
 }
 
+/**
+ * CUÁNTO TEXTO CABE (medidor, contrato v1.12.0; pedido de Sam por la ventana de texto, 2026-11-17: «caben hasta N
+ * caracteres»). Con la MISMA medida que decide VIDEOLAB_TEXT_DOES_NOT_FIT, al tamaño mínimo del preset: busca, palabra a
+ * palabra, el comienzo más largo del texto que entra en `maxW` con `max_lines`. PURO.
+ * → { layer, max_lines, max_width_px, min_px, chars, chars_fit, fits }
+ */
+export function fitInfo({ text, spec, layer, canvas, maxW, measure, family }) {
+  const raw = String(text);
+  const to = Math.min(num(spec.size_pct, 4), num(spec.min_size_pct, num(spec.size_pct, 4)));
+  const at = { ...spec, size_pct: to };
+  const enters = (t) => { try { measureBlock({ text: t, spec: at, layer, canvas, maxW, measure, family }); return true; } catch { return false; } };
+  // Cortes posibles: después de cada palabra (se respetan los saltos de línea del texto).
+  const cuts = [];
+  for (const m of raw.matchAll(/\S+/g)) cuts.push(m.index + m[0].length);
+  let lo = 0, hi = cuts.length;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (enters(raw.slice(0, cuts[mid - 1]))) lo = mid; else hi = mid - 1; }
+  const charsFit = lo ? cuts[lo - 1] : 0;
+  return { layer, max_lines: Math.max(1, Math.round(num(spec.max_lines, layer === 'caption' ? 2 : 3))), max_width_px: Math.round(maxW),
+    min_px: Math.round(canvas.height * to / 100), chars: raw.length, chars_fit: charsFit, fits: charsFit === raw.length };
+}
+
 /** Agrupa las palabras de los subtítulos de `min` a `max`, cortando en puntuación, cambio de persona o pausa. PURO. */
 export function groupCaptionWords(words, { min = 3, max = 4, maxGapMs = 700 } = {}) {
   if (!(min >= 1 && max >= min && max <= 8)) bad(`agrupación de subtítulos inválida: ${min}–${max}`);
@@ -862,7 +883,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   /** Dibuja un bloque ya colocado: caja, filete y texto. */
   const drawn = [];
   const draw = (a) => {
-    const { layer, key, spec, m, rect, t, textHex, emphasisHex, words, fam, align, placed = 'auto', segments = null } = a;
+    const { layer, key, spec, m, rect, t, textHex, emphasisHex, words, fam, align, placed = 'auto', segments = null, fit = null } = a;
     // Posición por tramo de toma (v1.4.0): un evento por tramo; la entrada sólo en el primero y la salida sólo en el
     // último, para que el bloque no vuelva a entrar en cada corte.
     if (segments && segments.length > 1) {
@@ -871,6 +892,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     } else drawEvents(a);
     const rr = (r) => ({ x: R(r.x), y: R(r.y), w: R(r.w), h: R(r.h) });
     blocks.push({ layer, preset_key: key, rect: rr(rect), start_ms: t.start_ms, end_ms: t.end_ms, size_px: m.px, lines: m.lines.length, placed, align,
+      ...(fit ? { fit } : {}),
       ...(segments && segments.length > 1 ? { segments: segments.map((g) => ({ start_ms: g.start_ms, end_ms: g.end_ms, rect: rr(g.rect) })) } : {}) });
     drawn.push({ layer, preset_key: key, spec, m, rect, t, textHex, emphasisHex, words, family: fam, align, placed });
   };
@@ -1022,6 +1044,15 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     return { ...first, placed: 'auto' };
   };
 
+  // Medidor (v1.12.0): el mismo cálculo acompaña al bloque y, si el texto no entra, al error.
+  const fitOf = (a) => fitInfo({ text: a.text, spec: a.spec, layer: a.layer, canvas, maxW: a.maxW, measure, family: a.fam });
+  const placeWithFit = (a, fn) => {
+    try { return { ...fn(a), fit: fitOf(a) }; } catch (e) {
+      if (e?.label === 'VIDEOLAB_TEXT_DOES_NOT_FIT') e.fit = { ...fitOf(a), label: a.label };
+      throw e;
+    }
+  };
+
   // BLOQUE COLOCADO A MANO (contrato v1.3.3). El centro en % de la zona segura y el zoom sobre el preset; se acota a la
   // zona segura y por encima de los subtítulos. No esquiva: si tapa una cara o pisa otro texto en su tramo, avisa.
   const placeManual = ({ text, spec, layer, label, t, maxW, fam, place: pl }) => {
@@ -1075,9 +1106,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tH = span(Number(tl.hook.start_ms), Number(tl.hook.end_ms), 'hook');
     const hookArgs = { text: tl.hook.text, spec, layer: 'hook', label: 'hook', align, anchorDefault: 'top', t: tH,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed, segments } = tl.hook.place ? placeManual({ ...hookArgs, place: tl.hook.place }) : fitFree(hookArgs);
+    const { m, rect, placed, segments, fit } = placeWithFit(hookArgs, (a) => tl.hook.place ? placeManual({ ...a, place: tl.hook.place }) : fitFree(a));
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, segments, t: tH, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'hook', key: row.preset_key, spec, m, rect, segments, fit, t: tH, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`H_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
@@ -1091,9 +1122,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tK = span(Number(k.at_ms), Number(k.at_ms) + Number(k.dur_ms), `key_titles[${i}]`);
     const kArgs = { text: k.text, spec, layer: 'key_title', label: `key_titles[${i}]`, align, anchorDefault: 'center', t: tK,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed, segments } = k.place ? placeManual({ ...kArgs, place: k.place }) : fitFree(kArgs);
+    const { m, rect, placed, segments, fit } = placeWithFit(kArgs, (a) => k.place ? placeManual({ ...a, place: k.place }) : fitFree(a));
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, segments, t: tK, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'key_title', key: row.preset_key, spec, m, rect, segments, fit, t: tK, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`K_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
@@ -1106,9 +1137,9 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     const tC = span(at, tl.cta.dur_ms ? at + Number(tl.cta.dur_ms) : durationMs, 'cta');
     const cArgs = { text: tl.cta.text, spec, layer: 'cta', label: 'cta', align, anchorDefault: 'above_captions', t: tC,
       maxW: safe.w * num(spec.max_width_pct, 100) / 100, fam };
-    const { m, rect, placed, segments } = tl.cta.place ? placeManual({ ...cArgs, place: tl.cta.place }) : fitFree(cArgs);
+    const { m, rect, placed, segments, fit } = placeWithFit(cArgs, (a) => tl.cta.place ? placeManual({ ...a, place: tl.cta.place }) : fitFree(a));
     const textHex = color(spec.color ?? 'text');
-    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, segments, t: tC, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
+    draw({ layer: 'cta', key: row.preset_key, spec, m, rect, segments, fit, t: tC, textHex, placed, emphasisHex: st.emphasisHex, words: st.wordsOf(m),
       styleName: styleFor(`C_${row.preset_key}`, fam, spec, m, textHex), fam, align });
     st.done();
   }
