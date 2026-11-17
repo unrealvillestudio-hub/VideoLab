@@ -26,9 +26,11 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
 export function scenePage(scene, fonts) {
   const faces = fonts.map((f) => `@font-face{font-family:${JSON.stringify(f.family)};src:url(data:font/${f.format === 'opentype' ? 'otf' : 'ttf'};base64,${Buffer.from(f.bytes).toString('base64')}) format(${JSON.stringify(f.format)});font-weight:${f.weight ?? 400};font-style:${f.style ?? 'normal'};font-display:block}`).join('\n');
   const { width: W, height: H } = scene.canvas;
+  // Texto detrás de las personas: la página mide 3W (tres zonas, runtime.mjs). Sin bloques con `depth`, W como siempre.
+  const PW = scene.blocks.some((b) => b.depth) ? 3 * W : W;
   return `<!doctype html><html><head><meta charset="utf-8"><style>
 ${faces}
-html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:${W}px;height:${H}px}
+html,body{margin:0;padding:0;background:transparent;overflow:hidden;width:${PW}px;height:${H}px}
 #root{position:absolute;left:0;top:0}
 *{animation:none!important;transition:none!important;caret-color:transparent}
 </style></head><body><div id="root"></div>
@@ -37,8 +39,12 @@ ${inline('./ease.mjs')}
 ${inline('./keyframes.mjs')}
 ${inline('./runtime.mjs')}
 const SCENE = ${JSON.stringify(scene).replace(/</g, '\\u003c')};
-const VL = mount(document.getElementById('root'), SCENE, document);
-window.__vl = { seek: VL.seek, check: VL.check,
+const VL = mount(document.getElementById('root'), SCENE, document, { regions: true });
+// Máscara de la persona (texto detrás, runtime 1.9.0): \`mask(url, n)\` la decodifica y deja \`__vlMask = n\` cuando ya está
+// en el DOM; el capturador avanza fotogramas sin imagen hasta verlo (con beginFrame la página sólo corre si se le pide).
+window.__vlMask = 0;
+window.__vl = { seek: VL.seek, check: VL.check, regions: VL.regions, depthRects: VL.depthRects, toFront: VL.toFront,
+  mask: (url, n) => { window.__vlMask = -1; VL.setMask(url).then(() => { window.__vlMask = n; }); },
   // Se cargan TODAS las caras declaradas antes de comprobar: el navegador sólo carga una cara cuando un texto la usa, y
   // si una familia sólo se dibuja en negrita, su cara regular quedaba sin cargar y la comprobación daba falso aunque la
   // fuente estuviera (medido en la F2: «DM Sans» → false con el rol y los subtítulos en negrita).

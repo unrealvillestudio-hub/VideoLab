@@ -18,6 +18,44 @@ determinista. Con el mismo pedido da el mismo video, cada preset es una plantill
 
 ---
 
+## 0 quinquies. Texto detrás de las personas (2026-11-17)
+
+**Encargo de Sam:** «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos. Investiga
+todas las posibilidades […] y las implementamos». Objetivo F1 confirmado: «sí al objetivo F1, VideoLab, tope 35 %».
+
+**Investigación** (fuentes en el informe a Sam del 2026-11-17).
+- **Técnica estándar:** recortar a la persona en cada cuadro y apilar video → texto → persona. Así lo hacen Premiere
+  (Object Mask), CapCut (quitar fondo sobre una copia) y Remotion (*reportado*).
+- **Variantes:** detrás fijo, sale desde detrás, cruza por detrás, entre capas, halo, texto dentro de la silueta, sigue
+  a la persona y paralaje.
+- **Buenas prácticas:** texto corto, grueso y grande; no tapar la cara; bordes limpios; usarlo en momentos clave.
+  Son guías de editores: no hay estudios con datos medidos (*reportado*).
+- **Licencias:**
+  - MediaPipe (Apache-2.0): se usa;
+  - SAM 2 (Apache-2.0): demasiado pesado sin GPU (*deducido*);
+  - Robust Video Matting (GPL-3): descartado.
+
+**Medido en la prueba** (video de prueba con dos personas, 6 s):
+- **Calidad:** el modelo rápido (`selfie_segmenter`) recorta en bloques; el multiclase (`selfie_multiclass_256x256`)
+  recorta bien a las dos personas, pelo incluido.
+- **Tiempo:** el multiclase tarda ~0,4 s por cuadro en CPU. Con uno de cada dos cuadros, 156 cuadros de bloques
+  detrás se recortan en 35 s.
+- **Repetibilidad:** misma máscara en dos corridas.
+- **Control de legibilidad:** un título clave de 59 % tapado salió delante con aviso; un gancho con el 2,6 % tapado salió
+  detrás, con el pelo por delante de la letra.
+
+**Cómo funciona:**
+1. `segment.mjs` recorta los fotogramas de los bloques con `depth` en el mismo navegador.
+2. `capture.mjs`, antes de capturar, mide la cobertura y pasa delante lo que no se leería. Después captura una página de
+   3W: [delante | detrás | máscara].
+3. ffmpeg recorta las tres zonas, multiplica el alfa del texto de detrás por (255 − máscara) y compone video → detrás →
+   delante.
+
+La máscara entra como `<img>` decodificada antes de entrar al DOM: el fotograma siguiente ya la pinta entera.
+
+**Archivos del recorte:** `render/scripts/seg-assets.sh` los baja fijados por sha256. Los usan la imagen (`/opt/vl-seg`)
+y el CI.
+
 ## 0 quater. Cifras en rodillo (2026-11-17)
 
 **Encargo de Sam (2026-11-17):** «implementa el contador de cifras dígito a dígito para los títulos clave».

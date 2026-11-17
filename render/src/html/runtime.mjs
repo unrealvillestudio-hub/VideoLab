@@ -11,7 +11,7 @@
 
 import { stateAt, rectAt } from './keyframes.mjs';
 
-export const RUNTIME_VERSION = '1.8.0';
+export const RUNTIME_VERSION = '1.9.0';
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 /** Rodillo: alto de la casilla de cada dígito, en líneas. 1,6 deja a los dígitos vecinos fuera de la columna en reposo. */
@@ -59,7 +59,7 @@ export async function loadFonts(scene, doc = document) {
  * Monta la escena dentro de `root` (un elemento del tamaño del lienzo, en px del lienzo; la vista previa lo escala
  * con CSS). Devuelve { seek(ms), check(), prepare(), destroy() }.
  */
-export function mount(root, scene, doc = root.ownerDocument) {
+export function mount(root, scene, doc = root.ownerDocument, opts = {}) {
   const el = (cls, parent) => { const d = doc.createElement('div'); d.className = cls; parent.appendChild(d); return d; };
   const span = (cls, parent, text) => { const s = doc.createElement('span'); s.className = cls; if (text != null) s.textContent = text; parent.appendChild(s); return s; };
   const abs = (node) => { Object.assign(node.style, { position: 'absolute', left: '0px', top: '0px', transformOrigin: '50% 50%' }); return node; };
@@ -104,7 +104,12 @@ export function mount(root, scene, doc = root.ownerDocument) {
     ws._roll = { cols, stepH };
   };
   const W = scene.canvas.width, H = scene.canvas.height;
-  Object.assign(root.style, { position: root.style.position || 'relative', width: W + 'px', height: H + 'px', overflow: 'hidden' });
+  // ZONAS (texto detrás de las personas, runtime 1.9.0): con `opts.regions` y algún bloque con `depth`, la página mide
+  // 3W × H: [texto de delante | texto de detrás | máscara de la persona]. El capturador toma una sola imagen por fotograma
+  // y ffmpeg recorta el texto de detrás con la máscara (render/src/html/capture.mjs). Sin `opts.regions` (la vista previa
+  // del Orchestrator), todo se dibuja delante, como hasta la 1.8.0.
+  const regions = !!opts.regions && scene.blocks.some((b) => b.depth);
+  Object.assign(root.style, { position: root.style.position || 'relative', width: (regions ? 3 * W : W) + 'px', height: H + 'px', overflow: 'hidden' });
 
   // Franja de identidad (dato de la marca): un rectángulo fijo, siempre visible.
   if (scene.strip) {
@@ -118,15 +123,23 @@ export function mount(root, scene, doc = root.ownerDocument) {
   // fuera de esta capa: nada del texto la tapa.
   const layer = abs(el('', root));
   Object.assign(layer.style, { width: W + 'px', height: H + 'px' });
-  if (scene.safe) {
-    const s = scene.safe;
-    layer.style.clipPath = 'inset(' + s.y + 'px ' + (W - s.x - s.w) + 'px ' + (H - s.y - s.h) + 'px ' + s.x + 'px)';
+  const safeClip = scene.safe ? 'inset(' + scene.safe.y + 'px ' + (W - scene.safe.x - scene.safe.w) + 'px ' + (H - scene.safe.y - scene.safe.h) + 'px ' + scene.safe.x + 'px)' : null;
+  if (safeClip) layer.style.clipPath = safeClip;
+  // Con zonas: cada zona recorta a su lienzo, así un texto que entra desde fuera no se asoma a la zona de al lado.
+  let back = null, maskBox = null, maskImg = null;
+  if (regions) {
+    layer.style.overflow = 'hidden';
+    back = abs(el('', root));
+    Object.assign(back.style, { left: W + 'px', width: W + 'px', height: H + 'px', overflow: 'hidden' });
+    if (safeClip) back.style.clipPath = safeClip;
+    maskBox = abs(el('', root));
+    Object.assign(maskBox.style, { left: 2 * W + 'px', width: W + 'px', height: H + 'px', overflow: 'hidden' });
   }
 
   // ───── bloques ─────
   const built = scene.blocks.map((b) => {
     const has = (t) => b.tracks.some((tr) => tr.target === t);
-    const wrap = abs(el('', layer));
+    const wrap = abs(el('', regions && b.depth ? back : layer));
     wrap.style.width = b.rect.w + 'px'; wrap.style.height = b.rect.h + 'px';
     const ruleOff = b.rule && b.rule.position === 'above' ? b.rule.th + b.rule.gap : 0;
     const content = { y: ruleOff, h: b.rect.h - (b.rule ? b.rule.th + b.rule.gap : 0) };
@@ -327,5 +340,38 @@ export function mount(root, scene, doc = root.ownerDocument) {
 
   function destroy() { while (root.firstChild) root.removeChild(root.firstChild); }
 
-  return { seek, check, prepare, destroy };
+  /**
+   * La máscara de la persona en la zona 3 (PNG en gris: blanco = persona), o ninguna con null. La imagen se decodifica
+   * ANTES de entrar al DOM (`decode()`): así el fotograma siguiente ya la pinta, nunca a medias. Devuelve una promesa.
+   */
+  function setMask(url) {
+    if (!maskBox) return Promise.resolve(false);
+    if (url == null) { if (maskImg) maskImg.style.display = 'none'; return Promise.resolve(true); }
+    const img = doc.createElement('img');
+    img.src = url;
+    return img.decode().then(() => {
+      Object.assign(img.style, { position: 'absolute', left: '0px', top: '0px', width: W + 'px', height: H + 'px', display: 'block' });
+      if (maskImg) maskBox.replaceChild(img, maskImg); else maskBox.appendChild(img);
+      maskImg = img;
+      return true;
+    });
+  }
+
+  /** Cajas de las palabras de los bloques que van detrás y están en pantalla, en coordenadas del lienzo. */
+  function depthRects() {
+    if (!back) return [];
+    const o = back.getBoundingClientRect();
+    return built.filter((k) => k.wrap.parentNode === back && k.wrap.style.display !== 'none').map((k) => ({
+      id: k.b.id,
+      rects: k.units.word.map((n) => { const r = n.getBoundingClientRect(); return [r.left - o.left, r.top - o.top, r.width, r.height]; }),
+    }));
+  }
+
+  /** Pasa un bloque de detrás a delante (el texto quedaría ilegible detrás de la persona). */
+  function toFront(id) {
+    const k = built.find((x) => x.b.id === id);
+    if (k && back && k.wrap.parentNode === back) layer.appendChild(k.wrap);
+  }
+
+  return { seek, check, prepare, destroy, setMask, depthRects, toFront, regions };
 }

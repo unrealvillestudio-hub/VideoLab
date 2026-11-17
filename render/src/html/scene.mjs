@@ -106,6 +106,8 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
       mark: obj(motion?.mark) ? { height: Math.max(2, Math.round(m.px * num(motion.mark.height_em, 0.12))), offset: Math.round(m.px * num(motion.mark.offset_em, 0.08)) } : null,
       // Contador dígito a dígito (`motion.roll`): las cifras giran como un rodillo en vez de contar en el texto.
       roll: obj(motion?.roll) ? { turns: num(motion.roll.turns, 1), lag: num(motion.roll.lag, 0.12) } : null,
+      // Texto detrás de las personas (`spec.depth`, contrato v1.11.0): el bloque se dibuja por detrás del sujeto.
+      depth: depthOf(spec, b.layer, d.preset_key),
       uppercase: false,          // las palabras ya llegan con la caja de presentación
       tracks,
     };
@@ -172,6 +174,28 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
     // La franja la dibuja la página (y la vista previa): no va como drawbox de ffmpeg en el motor HTML.
     strip: plan.strip, filters: [], warnings: plan.warnings, layout: plan.blocks,
   };
+}
+
+// ── TEXTO DETRÁS DE LAS PERSONAS (2026-11-17) ───────────────────────────────────────────────────────────────────
+// Encargo de Sam: «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos»; objetivo F1
+// confirmado («sí al objetivo F1, VideoLab, tope 35 %»). Es dato del estilo: `spec.depth = { mode, max_cover? }`.
+/** Modos de profundidad (eje del sistema). */
+export const DEPTH_MODES = Object.freeze(['behind_subject']);
+/** Capas que pueden ir detrás: los bloques de lectura corta. Los subtítulos y el rol no (se leen de corrido o nombran). */
+export const DEPTH_LAYERS = Object.freeze(['hook', 'key_title', 'cta']);
+/** Tope de legibilidad por defecto (Sam, 2026-11-17: «tope 35 %»): fracción del texto que la persona puede tapar. */
+export const DEPTH_MAX_COVER = 0.35;
+
+/** La profundidad de un bloque a partir de su estilo; null si va delante. Lanza si el dato no vale. PURO. */
+export function depthOf(spec, layer, where = 'spec') {
+  if (spec?.depth == null) return null;
+  const d = spec.depth;
+  if (!obj(d)) throw new Error(`${where}.depth debe ser un objeto`);
+  if (!DEPTH_MODES.includes(d.mode)) throw new Error(`${where}.depth.mode debe ser uno de: ${DEPTH_MODES.join(', ')}`);
+  if (!DEPTH_LAYERS.includes(layer)) throw new Error(`${where}.depth no vale en la capa ${layer} (sólo ${DEPTH_LAYERS.join(', ')})`);
+  const maxCover = d.max_cover == null ? DEPTH_MAX_COVER : Number(d.max_cover);
+  if (!(maxCover > 0 && maxCover <= 1)) throw new Error(`${where}.depth.max_cover debe estar entre 0 y 1`);
+  return { mode: d.mode, max_cover: maxCover };
 }
 
 /** Tramos con texto en pantalla, unidos (para capturar sólo ahí). PURO. */

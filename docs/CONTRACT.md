@@ -363,6 +363,27 @@ distinta → la captura.
 `segments` y lo coloca por tramo (con paso suave entre tramos en el motor `html`); la entrada va sólo en el primer tramo
 y la salida sólo en el último. Si en un tramo no hay lugar ni al tamaño mínimo, queda en su ancla con `TEXT_OVER_FACE`.
 
+### 4 ter.9 Texto detrás de las personas — `spec.depth` (v1.11.0, runtime 1.9.0)
+
+Encargo de Sam (2026-11-17): «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos».
+Objetivo F1 confirmado: «sí al objetivo F1, VideoLab, tope 35 %».
+
+- **Dato del estilo** (`videolab_text_presets.spec`, motor `html`): `depth: { mode: 'behind_subject', max_cover? }`.
+  - **Capas:** sólo `hook`, `key_title` y `cta`. En otra capa, el estilo es inválido.
+  - **`max_cover`:** fracción del texto que la persona puede tapar (0–1). Por defecto `0.35`.
+  - El pedido no cambia: se elige un estilo con `depth` como cualquier otro.
+- **Qué hace el job:**
+  1. recorta a las personas sólo en los fotogramas de esos bloques: MediaPipe, modelo multiclase de personas, Apache-2.0, en el mismo navegador del motor;
+  2. pasa por el modelo uno de cada dos fotogramas, interpola los demás y suaviza en el tiempo con enteros;
+  3. dibuja el texto de detrás en una zona aparte y lo compone con ffmpeg entre el video y el texto de delante: donde está la persona, el texto de detrás no se ve.
+- **Control de legibilidad:** antes de capturar, el motor mide qué parte del área de las palabras tapa la persona, en el tramo central del bloque.
+  - Si pasa `max_cover`, el bloque va **delante** y sale el aviso `TEXT_BEHIND_FALLBACK`.
+  - Si no hay recorte (faltan los archivos del modelo o el recorte falló), el bloque también va delante, con el aviso `TEXT_DEPTH_FALLBACK`.
+  - Ningún video sale con el texto ilegible por este efecto.
+- **Salida:** `text_layout.depth = [{ id, layer, preset_key, cover, max_cover, placed: 'behind' | 'front' }]`.
+- **Vista previa** (`/api/text-scene` + runtime 1.9.0): el texto con `depth` se dibuja delante, porque la vista previa no recorta.
+- **Estilos iniciales** (`docs/html_presets_f4.json`, `proposed`): `hook_behind_rise`, `hook_behind_emerge`, `key_title_behind_rise` y `key_title_behind_cross`.
+
 ### 4 ter.6 Vista previa fiel — `POST /api/text-scene` y el runtime versionado (v1.4.0)
 
 ```
@@ -550,6 +571,14 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.11.0 (2026-11-17)** — Texto detrás de las personas (§4 ter.9). Componentes:
+  - `spec.depth = { mode: 'behind_subject', max_cover }` en los estilos `html` de gancho, título clave y CTA;
+  - recorte de personas con MediaPipe (Apache-2.0) dentro del render;
+  - control de legibilidad con tope del 35 %, avisos `TEXT_BEHIND_FALLBACK` y `TEXT_DEPTH_FALLBACK`;
+  - salida `text_layout.depth`;
+  - runtime 1.9.0, con zonas sólo en el capturador.
+
+  4 estilos nuevos `proposed`. Compatible hacia atrás: sin estilos con `depth`, el dibujo es el mismo.
 - **v1.10.0 (2026-11-17)** — Sonido F2 (§4 ter.8): `text_layers.sound.bed` y `text_layers.sound.effects` por separado,
   con volumen (`level_lu`, `gain_db`), elección desde la librería (`sound_key`, `sounds_by_fn`) y silencio por momento
   (`null`). Familias en `videolab_sound_presets.kind`; 6 presets de fondo y 6 de efectos (`docs/sound_presets_f2.json`).

@@ -1,0 +1,348 @@
+{
+  "_doc": "Estilos de texto del motor HTML, F4 (2026-11-17): TEXTO DETRÁS DE LAS PERSONAS. Encargo de Sam: «la posibilidad del efecto que anima el texto por detrás de los sujetos en los videos»; objetivo F1 confirmado («sí al objetivo F1, VideoLab, tope 35 %»). spec.depth = { mode: behind_subject, max_cover: 0.35 } (contrato v1.11.0): el bloque va detrás de la persona salvo que la persona tape más del 35 % del texto, y entonces va delante con aviso. Tres animaciones: detrás fijo (rise), sale desde detrás (emerge) y cruza por detrás (cross). Todos proposed: Sam los valida en el Orchestrator.",
+  "version": "f4",
+  "date": "2026-11-17",
+  "rows": [
+    {
+      "preset_key": "hook_behind_rise",
+      "layer": "hook",
+      "name": "Gancho detrás de la persona",
+      "description": "Palabras grandes por detrás de la persona, en el tercio de arriba: suben y se asientan; la persona queda delante del texto.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "source": "motor_html_f4",
+      "sort": 90,
+      "spec": {
+        "engine": "html",
+        "bold": true,
+        "line_height": 1.02,
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 250,
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.1,
+          "alpha": 0.35
+        },
+        "depth": {
+          "mode": "behind_subject",
+          "max_cover": 0.35
+        },
+        "size_pct": 11,
+        "min_size_pct": 6,
+        "max_lines": 2,
+        "anchor": "top",
+        "motion": {
+          "tracks": [
+            {
+              "target": "word",
+              "stagger": {
+                "each_ms": 90
+              },
+              "keys": [
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "y_em": 0.35
+                },
+                {
+                  "t": 520,
+                  "opacity": 1,
+                  "y_em": 0,
+                  "ease": "expo_out"
+                }
+              ]
+            },
+            {
+              "target": "emphasis",
+              "keys": [
+                {
+                  "t": 500,
+                  "tint": 0
+                },
+                {
+                  "t": 700,
+                  "tint": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "block",
+              "from": "end",
+              "keys": [
+                {
+                  "t": -250,
+                  "opacity": 1
+                },
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "ease": "quad_in"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "preset_key": "hook_behind_emerge",
+      "layer": "hook",
+      "name": "Gancho que sale desde detrás",
+      "description": "El texto crece desde el centro, por detrás de la persona, hasta su tamaño: parece salir de detrás de ella.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "source": "motor_html_f4",
+      "sort": 91,
+      "spec": {
+        "engine": "html",
+        "bold": true,
+        "line_height": 1.02,
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 250,
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.1,
+          "alpha": 0.35
+        },
+        "depth": {
+          "mode": "behind_subject",
+          "max_cover": 0.35
+        },
+        "size_pct": 11,
+        "min_size_pct": 6,
+        "max_lines": 2,
+        "anchor": "top",
+        "motion": {
+          "tracks": [
+            {
+              "target": "block",
+              "keys": [
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "scale": 0.45
+                },
+                {
+                  "t": 140,
+                  "opacity": 1
+                },
+                {
+                  "t": 760,
+                  "scale": 1,
+                  "ease": "expo_out"
+                }
+              ]
+            },
+            {
+              "target": "emphasis",
+              "keys": [
+                {
+                  "t": 700,
+                  "tint": 0
+                },
+                {
+                  "t": 900,
+                  "tint": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "block",
+              "from": "end",
+              "keys": [
+                {
+                  "t": -250,
+                  "opacity": 1
+                },
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "ease": "quad_in"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "preset_key": "key_title_behind_rise",
+      "layer": "key_title",
+      "name": "Título clave detrás de la persona",
+      "description": "El dato en grande por detrás de la persona: aparece con un leve zoom y la persona queda delante.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "source": "motor_html_f4",
+      "sort": 90,
+      "spec": {
+        "engine": "html",
+        "bold": true,
+        "line_height": 1.02,
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 250,
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.1,
+          "alpha": 0.35
+        },
+        "depth": {
+          "mode": "behind_subject",
+          "max_cover": 0.35
+        },
+        "size_pct": 9,
+        "min_size_pct": 5.5,
+        "max_lines": 2,
+        "anchor": "center",
+        "motion": {
+          "tracks": [
+            {
+              "target": "block",
+              "keys": [
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "scale": 1.12
+                },
+                {
+                  "t": 420,
+                  "opacity": 1,
+                  "scale": 1,
+                  "ease": "expo_out"
+                }
+              ]
+            },
+            {
+              "target": "emphasis",
+              "keys": [
+                {
+                  "t": 400,
+                  "tint": 0
+                },
+                {
+                  "t": 600,
+                  "tint": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "block",
+              "from": "end",
+              "keys": [
+                {
+                  "t": -250,
+                  "opacity": 1
+                },
+                {
+                  "t": 0,
+                  "opacity": 0,
+                  "ease": "quad_in"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "preset_key": "key_title_behind_cross",
+      "layer": "key_title",
+      "name": "Título clave que cruza por detrás",
+      "description": "El título entra desde la derecha pasando por detrás de la persona, se queda para leerse y sale por la izquierda.",
+      "brand_id": null,
+      "active": true,
+      "status": "proposed",
+      "source": "motor_html_f4",
+      "sort": 91,
+      "spec": {
+        "engine": "html",
+        "bold": true,
+        "line_height": 1.02,
+        "align": "center",
+        "color": "text",
+        "emphasis_color": "accent",
+        "entry": "fade",
+        "duration_ms": 300,
+        "exit_ms": 450,
+        "shadow": {
+          "color": "#000000",
+          "depth_pct": 0.1,
+          "alpha": 0.35
+        },
+        "depth": {
+          "mode": "behind_subject",
+          "max_cover": 0.35
+        },
+        "size_pct": 9,
+        "min_size_pct": 5.5,
+        "max_lines": 2,
+        "anchor": "center",
+        "motion": {
+          "tracks": [
+            {
+              "target": "block",
+              "keys": [
+                {
+                  "t": 0,
+                  "x_em": 7,
+                  "opacity": 1
+                },
+                {
+                  "t": 700,
+                  "x_em": 0,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "emphasis",
+              "keys": [
+                {
+                  "t": 650,
+                  "tint": 0
+                },
+                {
+                  "t": 850,
+                  "tint": 1,
+                  "ease": "cubic_out"
+                }
+              ]
+            },
+            {
+              "target": "block",
+              "from": "end",
+              "keys": [
+                {
+                  "t": -450,
+                  "x_em": 0
+                },
+                {
+                  "t": 0,
+                  "x_em": -7,
+                  "ease": "cubic_in"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

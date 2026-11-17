@@ -25,5 +25,9 @@ jobs:
       # package.json ni el lock (el job de render todavía no lo usa).
       - run: npm install --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
         working-directory: .
+      # Texto detrás de las personas (2026-11-17): el recorte (MediaPipe, Apache-2.0) fijado por sha256, el mismo que lleva
+      # la imagen del render. Sin él, tests/depth_test.mjs se salta la prueba con el modelo.
+      - run: sh render/scripts/seg-assets.sh "$HOME/.cache/vl-seg"
+        working-directory: .
       - run: npm test
         working-directory: .
