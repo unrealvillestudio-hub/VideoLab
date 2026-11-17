@@ -365,6 +365,27 @@ es una aproximación (`approximate`). `GET /engine/<versión>/<módulo>` sirve s
 `runtime.mjs`; otra versión u otro archivo → 404. Errores: forma inválida o texto que no cabe → 400 con su
 `error_label`; el resto → 500 `VIDEOLAB_PROVIDER_FAILED`.
 
+### 4 ter.7 Rotación de estilos — `GET /api/text-styles?brandId=…` (v1.6.0)
+
+Objetivo validado por Sam (2026-11-17): 5 estilos por capa que rotan entre generaciones. **VideoLab sugiere; quien
+genera congela.** Para cada capa (`hook`, `role`, `caption`, `key_title`, `cta`) devuelve el estilo que la marca usó hace
+más tiempo y el grupo que rota:
+
+```
+→ 200 { status: 'ok', brandId,
+        suggested: { hook: { preset_key, pool: [preset_key, …] } | null, role: …, caption: …, key_title: …, cta: … },
+        basis: { jobs_considered, rule: 'least_recently_used' } }
+```
+
+- **Grupo de cada capa** (dato): los estilos activos de la capa que ve la marca (la fila de la marca manda sobre la del
+  sistema), con motor `html` y estado `validated_*`. Si no hay, los `html` activos. Si tampoco, cualquier activo.
+- **Historial:** `text_layout.presets` de los jobs completados de la marca **con pieza** (`pieceId`), los 200 más
+  recientes. Un estilo nunca usado cuenta como el más antiguo. Si hay empate, gana el menor `sort` y después la clave.
+- **El estilo se congela en `text_layers`:** quien genera (el Orchestrator hoy, el carril mañana) toma la sugerencia como
+  estilo por defecto y la escribe en el pedido. Volver a renderizar la misma pieza da el mismo video («mismo pedido →
+  mismo video»). VideoLab nunca elige estilo durante el render.
+- Errores: sin `brandId` → 400 `VIDEOLAB_BAD_REQUEST`; si falla la base → 500 `VIDEOLAB_PROVIDER_FAILED`.
+
 ## 5. Salida
 
 En `completed`, `lab_jobs.output_parsed`:
@@ -442,6 +463,9 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.6.0 (2026-11-17)** — Rotación de estilos (§4 ter.7): `GET /api/text-styles?brandId=…` sugiere por capa el
+  estilo usado hace más tiempo por la marca, entre los `html` validados. Quien genera congela la sugerencia en
+  `text_layers`. Sin cambio de forma en el pedido ni en la salida.
 - **v1.5.0 (2026-11-17)** — F2 del motor (objetivo validado por Sam: 5 estilos html por capa, rotados entre
   generaciones). Subtítulos: `hold_gap_ms` (el grupo espera al siguiente en pausas cortas) y `max_cps` (tope de lectura,
   aviso `TEXT_CAPTION_FAST`), con una sola fuente de tiempos para ASS y HTML. La regla del rol (≤ 350 ms, sin rebote) se
