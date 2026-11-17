@@ -304,6 +304,17 @@ if (SHELL && FONT) {
     const seq = await run('screenshot');
     assert.deepEqual(hs, seq.hs);
   });
+  // UNA FAMILIA QUE SÓLO SE DIBUJA EN NEGRITA (F2, 2026-11-17). Con su cara regular declarada pero sin usar, el navegador no
+  // la cargaba y la comprobación de fuentes daba falso: el motor HTML fallaba y la pieza caía a ASS.
+  const BOLD = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'].find(existsSync);
+  if (BOLD) caso('una familia sólo en negrita (con su cara regular declarada) carga y se captura', async () => {
+    const tl = { hook: TL().hook };   // hook_char_rise es negrita: la familia display sólo se usa en negrita
+    const s2 = buildScene(args({ typography: typo, durationMs: 1000, textLayers: tl }));
+    const f2 = [{ family: typo[0].font_family, bytes, format: 'truetype' },
+      { family: typo[0].font_family, bytes: readFileSync(BOLD), format: 'truetype', weight: 700 }];
+    const r = await renderHtmlLayers({ scene: s2, fonts: f2, browserPath: SHELL, mode: 'screenshot', encode: false, frames: 3 });
+    assert.equal(r.captured, 3);
+  });
   // VISTA PREVIA FIEL (F1): el runtime cargado como módulo ES por HTTP —como lo carga el Orchestrator, desde
   // /engine/<versión>/runtime.mjs servido por api/engine.js— dibuja EL MISMO PÍXEL que la página del capturador del job.
   caso('vista previa: el runtime servido como módulo ES dibuja el mismo píxel que el capturador del job', async () => {

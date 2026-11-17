@@ -39,6 +39,10 @@ ${inline('./runtime.mjs')}
 const SCENE = ${JSON.stringify(scene).replace(/</g, '\\u003c')};
 const VL = mount(document.getElementById('root'), SCENE, document);
 window.__vl = { seek: VL.seek, check: VL.check,
-  ready: document.fonts.ready.then(() => { VL.prepare(); return SCENE.families.map((f) => document.fonts.check('40px ' + JSON.stringify(f))); }) };
+  // Se cargan TODAS las caras declaradas antes de comprobar: el navegador sólo carga una cara cuando un texto la usa, y
+  // si una familia sólo se dibuja en negrita, su cara regular quedaba sin cargar y la comprobación daba falso aunque la
+  // fuente estuviera (medido en la F2: «DM Sans» → false con el rol y los subtítulos en negrita).
+  ready: Promise.all([...document.fonts].map((f) => f.load())).then(() => document.fonts.ready)
+    .then(() => { VL.prepare(); return SCENE.families.map((f) => document.fonts.check('40px ' + JSON.stringify(f))); }) };
 </script></body></html>`;
 }
