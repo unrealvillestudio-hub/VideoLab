@@ -253,7 +253,7 @@ para que la migración de datos la copie tal cual.
 | `group_min`, `group_max`, `max_gap_ms` | números | subtítulos: grupos de 3–4 palabras, corte en puntuación, cambio de persona o pausa | 3 / 4 / 700 |
 | `active_word` | `{ color, scale }` | subtítulos: la palabra que suena | `{ color: 'accent', scale: 1 }` |
 | `hold_gap_ms` | número | subtítulos (v1.5.0): si la pausa hasta el grupo siguiente es ≤ este valor, el grupo se queda en pantalla hasta que entra el siguiente | 0 (sin espera) |
-| `max_cps` | número | subtítulos (v1.5.0): tope de lectura en caracteres por segundo; un grupo que lo pasa no se corta, se avisa (`TEXT_CAPTION_FAST`) | sin tope |
+| `max_cps` | número | subtítulos (v1.5.0): tope de lectura en caracteres por segundo, medido por frase desde 2026-11-18 (grupos seguidos en pantalla hasta . ? ! … :); una frase que lo pasa no se corta, se avisa (`TEXT_CAPTION_FAST`) | sin tope |
 | `active_word.box` | `{ color, opacity, radius_em, pad_x_em, pad_y_em }` | subtítulos (v1.7.0, motor `html`): caja detrás de la palabra que suena | sin caja |
 | `active_word.pop` | `{ scale, ms }` | subtítulos (v1.7.0, motor `html`): salto de escala al empezar a sonar (sube y vuelve, sin rebote) | sin salto |
 | `active_word.mode` | `all` \| `keywords` | subtítulos (v1.7.0, motor `html`): `keywords` marca en el acento sólo las palabras de `captions.keywords` del pedido | `all` |
@@ -601,6 +601,9 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.12.0, corrección (2026-11-18)** — `max_cps` se mide por frase, no por grupo. Con la voz real de prueba, el aviso
+  `TEXT_CAPTION_FAST` salía en 12 de 40 grupos con habla normal: un grupo de 3–4 palabras dura menos de 1 s y su velocidad
+  varía por el corte, no por la lectura. La forma del pedido y de la salida no cambia.
 - **v1.12.0 (2026-11-17)** — Escucha exacta y medidor (decisión de Sam: «sí a la opción A y al medidor»). Componentes:
   - `POST /api/sound-preview` en Vercel (§4 ter.10), con el mismo módulo de mezcla que el job;
   - el job toma la voz del video limpio, no del dibujado;
