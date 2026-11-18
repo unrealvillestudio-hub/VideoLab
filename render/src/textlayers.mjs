@@ -667,28 +667,39 @@ export function groupCaptionWords(words, { min = 3, max = 4, maxGapMs = 700 } = 
  * - `spec.hold_gap_ms` (dato del preset; 0 o ausente = como antes): si la pausa hasta el grupo siguiente es ≤ ese valor,
  *   el grupo se queda en pantalla hasta que entra el siguiente. Sin esto, cada pausa corta dejaba 1–3 fotogramas sin
  *   subtítulo (parpadeo).
- * - `spec.max_cps` (dato del preset; ausente = sin tope): tope de lectura en caracteres por segundo. Un grupo que lo pasa
- *   no se corta (el karaoke sigue a la voz, que se oye): se cuenta y se avisa (`TEXT_CAPTION_FAST`). Ronda 1 de vigilancia,
- *   R1.4: las guías de lectura citan 17 cps.
+ * - `spec.max_cps` (dato del preset; ausente = sin tope): tope de lectura en caracteres por segundo. Ronda 1 de vigilancia,
+ *   R1.4: las guías de lectura citan 17 cps. Se mide por FRASE (2026-11-18), no por grupo: una frase son los grupos
+ *   seguidos en pantalla (sin hueco mayor que `hold_gap_ms`) hasta un signo de cierre (. ? ! … :). Las guías de 17 cps son
+ *   para subtítulos de 1 a 7 s; un grupo de 3–4 palabras dura menos de 1 s y, con habla normal (~15 cps), pasaba de 17 por
+ *   puro azar de cortes: con la voz real de prueba avisaba 12 de 40 grupos sin que nada se leyera rápido. Una frase que lo
+ *   pasa no se corta (el karaoke sigue a la voz, que se oye): se cuentan sus grupos y se avisa (`TEXT_CAPTION_FAST`).
  * Devuelve { times: [{ start_ms, end_ms }], fast: n, maxCps }. PURO.
  */
 export function captionTimes(groups, spec, durationMs) {
   const hold = Math.max(0, num(spec?.hold_gap_ms, 0));
   const maxCps = spec?.max_cps != null ? num(spec.max_cps, 0) : null;
-  let fast = 0;
   const times = groups.map((g, i) => {
     const start_ms = g[0].start_ms;
     const lastEnd = g[g.length - 1].end_ms;
     const next = groups[i + 1];
     const gap = next ? next[0].start_ms - lastEnd : Infinity;
     const end_ms = Math.min(durationMs, hold > 0 && gap >= 0 && gap <= hold ? next[0].start_ms : lastEnd);
-    if (maxCps > 0) {
-      const chars = g.map((w) => w.text).join(' ').length;
-      const secs = Math.max(0.001, (end_ms - start_ms) / 1000);
-      if (chars / secs > maxCps) fast++;
-    }
     return { start_ms, end_ms };
   });
+  let fast = 0;
+  if (maxCps > 0) {
+    const textOf = (g) => g.map((w) => w.text).join(' ');
+    let from = 0;
+    for (let i = 0; i < groups.length; i++) {
+      const last = i === groups.length - 1;
+      const closes = /[.?!…:]["»”)]*$/.test(groups[i][groups[i].length - 1].text) || last || times[i].end_ms < groups[i + 1][0].start_ms;
+      if (!closes) continue;
+      const chars = groups.slice(from, i + 1).map(textOf).join(' ').length;
+      const secs = Math.max(0.001, (times[i].end_ms - times[from].start_ms) / 1000);
+      if (chars / secs > maxCps) fast += i + 1 - from;
+      from = i + 1;
+    }
+  }
   return { times, fast, maxCps };
 }
 
@@ -951,7 +962,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     band = { x: safe.x, y: safe.y1 - bandH, w: safe.w, h: bandH };
     const ct = captionTimes(groups, spec, durationMs);
     capPlan = { row, spec, fam, groups, ms, times: ct.times };
-    if (ct.fast) capWarning = `TEXT_CAPTION_FAST: ${ct.fast} de ${groups.length} grupos de subtítulos pasan de ${ct.maxCps} caracteres por segundo (tope de lectura del preset ${row.preset_key})`;
+    if (ct.fast) capWarning = `TEXT_CAPTION_FAST: ${ct.fast} de ${groups.length} grupos de subtítulos están en frases que pasan de ${ct.maxCps} caracteres por segundo (tope de lectura del preset ${row.preset_key})`;
     blocks.push({ layer: 'caption_band', preset_key: row.preset_key, rect: band, start_ms: words[0].start_ms, end_ms: Math.min(durationMs, words[words.length - 1].end_ms) });
   }
   const margin = Math.ceil(H * ROLE_CAPTION_MARGIN_PCT / 100);

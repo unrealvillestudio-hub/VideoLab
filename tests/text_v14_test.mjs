@@ -401,6 +401,20 @@ caso('subtítulos: hold_gap_ms cubre las pausas cortas, no las largas; max_cps c
   assert.equal(T.captionTimes(rapido, { max_cps: 17 }, 5000).fast, 1);
   assert.equal(T.captionTimes(rapido, {}, 5000).fast, 0);
 });
+caso('subtítulos: el tope de lectura se mide por frase; habla normal en grupos cortos no avisa, una frase rápida sí', () => {
+  // Tiempos reales de una voz de prueba (2026-11-17): ~16,5 cps en la frase; el grupo «puede mover ese dinero» va a ~18,3.
+  const real = [['Ni', 0, 160], ['la', 200, 240], ['junta', 320, 640], ['directiva', 840, 1280], ['puede', 1360, 1600], ['mover', 1640, 1920],
+    ['ese', 2000, 2080], ['dinero', 2160, 2560], ['sin', 2640, 2800], ['el', 2840, 2880], ['voto', 2960, 3280], ['de', 3320, 3360], ['la', 3440, 3480],
+    ['mitad', 3520, 4000], ['de', 4080, 4120], ['los', 4160, 4240], ['propietarios.', 4320, 5280]].map(([text, s, e]) => ({ text, start_ms: s, end_ms: e }));
+  const spec = { max_cps: 17, hold_gap_ms: 450 };
+  const g = T.groupCaptionWords(real, { min: 3, max: 4, maxGapMs: 700 });
+  assert.ok(g.some((x) => { const t = T.captionTimes([x], {}, 9000).times[0]; return x.map((w) => w.text).join(' ').length / ((t.end_ms - t.start_ms) / 1000) > 17; }), 'algún grupo suelto pasa de 17');
+  assert.equal(T.captionTimes(g, spec, 9000).fast, 0);
+  // La misma frase dicha al doble de velocidad sí avisa, con todos sus grupos.
+  const doble = real.map((w) => ({ ...w, start_ms: w.start_ms / 2, end_ms: w.end_ms / 2 }));
+  const g2 = T.groupCaptionWords(doble, { min: 3, max: 4, maxGapMs: 700 });
+  assert.equal(T.captionTimes(g2, spec, 9000).fast, g2.length);
+});
 {
   const F2 = JSON.parse(readFileSync(join(RAIZ, 'docs/html_presets_f2.json'), 'utf8')).rows;
   caso('subtítulos: el aviso TEXT_CAPTION_FAST sale en text_layout, y ASS y HTML usan los mismos tiempos de grupo', () => {
