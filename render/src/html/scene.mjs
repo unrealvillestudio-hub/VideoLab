@@ -170,7 +170,8 @@ export function buildScene({ textLayers: tl, timeline = null, presets, brandId, 
 
   return {
     // `fonts`: [{ family, weight, style, url }] — sólo para la vista previa (loadFonts); el capturador las lleva dentro.
-    canvas, fps, durationMs, safe, families: plan.families, fonts, blocks, captions,
+    // `safe`: la zona efectiva (la del operador si hay `safe_override`); `safe_brand`: la de la marca y el canal, siempre.
+    canvas, fps, durationMs, safe, safe_brand: plan.safe_brand, families: plan.families, fonts, blocks, captions,
     // La franja la dibuja la página (y la vista previa): no va como drawbox de ffmpeg en el motor HTML.
     strip: plan.strip, filters: [], warnings: plan.warnings, layout: plan.blocks,
   };

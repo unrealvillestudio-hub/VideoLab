@@ -167,6 +167,12 @@ export function charStyles(text, block) {
 
 export function validateTextLayers(tl, { words = null } = {}) {
   if (!obj(tl)) bad('text_layers debe ser un objeto');
+  // Zona segura elegida por el operador para esta pieza (v1.13.0): % del lienzo, como safe_zone_pct; 0 = borde del video.
+  if (tl.safe_override != null) {
+    const z = tl.safe_override;
+    if (!obj(z)) bad('text_layers.safe_override debe ser un objeto { top, left, right, bottom } o null');
+    for (const k of SAFE_SIDES) if (!nonNeg(z[k]) || Number(z[k]) >= 50) bad(`safe_override.${k} debe estar entre 0 y menos de 50 (% del lienzo): ${z[k]}`);
+  }
   const key = (v, where) => { if (!str(v)) bad(`${where}.preset_key vacío`); };
   const txt = (v, where) => { if (!str(v)) bad(`${where}.text vacío`); };
   let layers = 0;
@@ -570,7 +576,10 @@ export function wrapText(text, maxW, measureLine) {
 
 // ─────────────────────────────────────────────────── geometría ───────────────────────────────────────────────────
 
-/** La zona segura en píxeles (dato `safe_zone_pct` del canal). PURO. */
+/** Los cuatro lados de una zona segura, en % del lienzo. */
+export const SAFE_SIDES = Object.freeze(['top', 'left', 'right', 'bottom']);
+
+/** La zona segura en píxeles (dato `safe_zone_pct` del canal, o `text_layers.safe_override`). PURO. */
 export function safeRect(safeZone, canvas) {
   const z = safeZone ?? {};
   for (const k of ['top', 'left', 'right', 'bottom']) {
@@ -861,7 +870,11 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   if (!(pos(canvas?.width) && pos(canvas?.height))) bad('lienzo inválido');
   if (!pos(durationMs)) bad('la duración del video base es desconocida');
   const { width: W, height: H } = canvas;
-  const safe = safeRect(safeZone, canvas);
+  // La zona de la marca y el canal es la referencia; con `safe_override` (v1.13.0) el operador la reemplaza para esta pieza
+  // en TODO lo que la usa: colocación automática y a mano, banda de subtítulos, medidor, recorte y texto detrás.
+  // Pedido de Sam (2026-11-18): «la posibilidad de ir al máximo posible a mi discreción», a riesgo del operador.
+  const safeBrand = safeRect(safeZone, canvas);
+  const safe = tl.safe_override != null ? safeRect(tl.safe_override, canvas) : safeBrand;
   const slots = colorSlots({ tokens, textLayers: tl });
   const color = (ref) => resolveColor(ref, { slots, palette });
   const families = new Set();
@@ -988,6 +1001,10 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
   // (`warnings`): nunca se descarta texto en silencio.
   const faces = facesPx(timeline, canvas);
   const warnings = capWarning ? [capWarning] : [];
+  if (tl.safe_override != null) {
+    const z = tl.safe_override;
+    warnings.push(`TEXT_SAFE_ZONE_OVERRIDDEN: la zona segura la eligió el operador (top ${z.top}, left ${z.left}, right ${z.right}, bottom ${z.bottom} % del lienzo); el texto puede quedar bajo los botones de la plataforma`);
+  }
   // Un lugar libre en vertical a partir de `rect`, o null. PURO respecto de lo ya colocado.
   const rectsIn = (b, t) => (b.segments ? b.segments.filter((g) => overlapT(g, t)).map((g) => g.rect) : [b.rect]);
   const freeSpot = (rect, t) => {
@@ -1254,7 +1271,7 @@ export function buildTextLayers({ textLayers: tl, timeline = null, presets, bran
     '', '[Events]', 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
     ...events, '',
   ].join('\n');
-  return { ass, filters, families: [...families], blocks, safe, warnings, drawn, strip: stripRect };
+  return { ass, filters, families: [...families], blocks, safe, safe_brand: safeBrand, warnings, drawn, strip: stripRect };
 }
 
 /**
