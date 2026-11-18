@@ -84,7 +84,7 @@ caso("marca N+1: ninguna marca ni persona en el contrato", () => {
   const T = await import("../render/src/textlayers.mjs");
   const tl = c.text_layers;
   caso("v1.4.0: motores, campos de tramo, alineaciones y modos de franja coinciden con el código y el documento", () => {
-    assert.equal(c.version, "1.12.0");
+    assert.equal(c.version, "1.13.0");
     assert.deepEqual(tl.engines, [...T.TEXT_ENGINES]);
     assert.deepEqual(tl.span_fields, [...T.SPAN_FIELDS]);
     assert.deepEqual(tl.span_limits, { max_terms: T.SPAN_MAX_TERMS, max_chars: T.SPAN_MAX_CHARS });

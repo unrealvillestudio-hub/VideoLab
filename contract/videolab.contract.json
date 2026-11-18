@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -247,7 +247,8 @@
       "TEXT_PLACE_CLAMPED",
       "TEXT_PLACED_OVER_FACE",
       "TEXT_PLACED_OVERLAP",
-      "TEXT_CAPTION_FAST"
+      "TEXT_CAPTION_FAST",
+      "TEXT_SAFE_ZONE_OVERRIDDEN"
     ],
     "preview": {
       "endpoint": "POST /api/text-scene",
@@ -270,6 +271,7 @@
         "approximate"
       ],
       "runtime": "GET /engine/<versión>/<módulo> — sólo ease.mjs, keyframes.mjs, runtime.mjs",
+      "safe_override": "v1.13.0: text_layers.safe_override = { top, left, right, bottom } (% del lienzo, 0 ≤ v < 50; 0 = borde del video) | null; reemplaza la zona de la marca y el canal en la colocación automática y a mano, la banda de subtítulos, fit, el recorte y el texto detrás; aviso TEXT_SAFE_ZONE_OVERRIDDEN; la escena trae safe (efectiva) y safe_brand (la de la marca y el canal)",
       "fit": "v1.12.0: cada bloque de scene.layout trae fit = { layer, max_lines, max_width_px, min_px, chars, chars_fit, fits }; si no cabe, el 400 VIDEOLAB_TEXT_DOES_NOT_FIT trae fit con label"
     },
     "sound_preview": {

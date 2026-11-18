@@ -278,6 +278,14 @@ sobrestima (`text_layout.metrics = 'estimate'`).
   `intel.platform_format_profiles.video_text_canal` (columna propia desde la migración `20261116130000`; `image_canal` es el canal de los presets de imagen y no se usa aquí); si el perfil no lo declara (antes de esa migración, los perfiles `reel` no lo declaraban
   [medido 2026-11-16]), del pedido (`params.safe_zone_canal`); sin ninguno → `VIDEOLAB_BAD_REQUEST`. La fila de la marca
   para ese canal manda sobre la del sistema.
+- **Zona segura del operador — `text_layers.safe_override` (v1.13.0).** `{ top, left, right, bottom } | null`, en % del
+  lienzo como `safe_zone_pct` (0 ≤ v < 50; 0 = borde del video). Si viene, **reemplaza** a la zona de la marca y el canal
+  para esa pieza en todo lo que la usa: colocación automática y a mano (incluido el acote), banda de subtítulos, `fit` y
+  `VIDEOLAB_TEXT_DOES_NOT_FIT`, recorte de cada evento y texto detrás de las personas. Siempre avisa
+  `TEXT_SAFE_ZONE_OVERRIDDEN`: la eligió el operador, a su riesgo, y el texto puede quedar bajo los botones de la
+  plataforma. Ausente o `null` → como antes. La escena (`/api/text-scene`) trae `safe` (la efectiva) y `safe_brand` (la de
+  la marca y el canal, siempre), para dibujar las dos. Pedido de Sam (2026-11-18): «la posibilidad de ir al máximo posible
+  a mi discreción».
 - Todo bloque, con su caja, contorno, sombra y filete, cae **dentro** de la zona segura; cada evento lleva además un
   recorte a la zona segura. Un texto que no entra con `max_lines` ni con `min_size_pct` → `VIDEOLAB_TEXT_DOES_NOT_FIT`
   (no se corta ni se desborda).
@@ -601,6 +609,8 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.13.0 (2026-11-18)** — Zona segura del operador por pieza: `text_layers.safe_override`, aviso
+  `TEXT_SAFE_ZONE_OVERRIDDEN` y `scene.safe_brand` (§4 ter.4). Encargo de Sam, pasado por la sesión B del Orchestrator.
 - **v1.12.0, corrección (2026-11-18)** — `max_cps` se mide por frase, no por grupo. Con la voz real de prueba, el aviso
   `TEXT_CAPTION_FAST` salía en 12 de 40 grupos con habla normal: un grupo de 3–4 palabras dura menos de 1 s y su velocidad
   varía por el corte, no por la lectura. La forma del pedido y de la salida no cambia.
