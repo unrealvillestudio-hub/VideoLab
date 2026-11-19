@@ -509,6 +509,11 @@ coloca y mezcla**. Diseño, licencias y medidas: `docs/MOTOR_SONIDO.md`.
 
 ### 4 ter.7 Rotación de estilos — `GET /api/text-styles?brandId=…` (v1.6.0)
 
+**Política sonora por marca (v1.15.0, 2026-11-19).** `public.videolab_sound_policy (brand_id, bed_tiers_allowed)`: si la
+marca la tiene, `suggested.sound_bed` sólo rota fondos cuyo sonido (`spec.bed.sound`) tiene un `voicelab_sound_library.tier`
+admitido (`synth`, `produced`, `premium`); sin política, todos, como antes. Los sonidos y presets de una marca son filas con
+su `brand_id`. `spec.bed.fade_out_ms` (dato del preset) funde la salida de la cama; sin él, la mezcla no cambia.
+
 Objetivo validado por Sam (2026-11-17): 5 estilos por capa que rotan entre generaciones. **VideoLab sugiere; quien
 genera congela.** Para cada capa (`hook`, `role`, `caption`, `key_title`, `cta`) devuelve el estilo que la marca usó hace
 más tiempo y el grupo que rota:
@@ -579,7 +584,11 @@ formato; NULL o 0 = sin portada), el render:
 - si el montaje falla (p. ej. pasaría de 60 s), el video sale sin portada y `video.cover.warning` dice
   `COVER_FALLBACK`; en el modo `text_layers` el aviso va también a `text_layout.warnings`.
 
-La salida dice `video.cover = { at_ms, hold_ms, method, badness, faces, reason? }`. `duration_ms` incluye la portada; el
+**Portada con gancho (v1.15.0, decisión de Sam 2026-11-19: «Portada con hook»).** Si el pedido trae gancho
+(`text_layers.hook`), los candidatos salen de su tramo: del 40 % (ya entró) hasta 100 ms antes de que salga; sin cara
+elegible en ese tramo, el primer momento de la ventana. Sin gancho, el video entero.
+
+La salida dice `video.cover = { at_ms, hold_ms, method, window: 'hook' | 'video', badness, faces, reason? }`. `duration_ms` incluye la portada; el
 `timeline` y `clean_video` siguen siendo los del video limpio, sin portada (un re-render de texto parte de ahí y la vuelve a poner).
 
 **Dónde queda:** bucket `unrlvl-media`, ruta `videolab/<brandId>/<pieceId>/<job_id>.mp4` (portada `.jpg` al lado).
@@ -624,6 +633,8 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.15.0 (2026-11-19)** — Fondos por marca y portada con gancho: política sonora (`videolab_sound_policy`, §4 ter.7),
+  `spec.bed.fade_out_ms`, y la portada buscada en el tramo del gancho (§5, `video.cover.window`).
 - **v1.14.0 (2026-11-19)** — Portada dentro del video (§5): fotograma del propio video con ojos abiertos y boca en
   reposo, fijo `video_bookend_ms` (dato del formato) al inicio y al final, y póster; `video.cover`; aviso `COVER_FALLBACK`.
 - **v1.13.0 (2026-11-18)** — Zona segura del operador por pieza: `text_layers.safe_override`, aviso

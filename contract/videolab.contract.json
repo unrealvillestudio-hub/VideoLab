@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -85,6 +85,7 @@
   ],
   "output": {
     "field": "lab_jobs.output_parsed.video",
+    "cover_hook": "v1.15.0: con gancho (text_layers.hook), la portada se busca en su tramo (del 40 % a 100 ms antes de que salga); video.cover.window = hook|video",
     "cover": "v1.14.0: video.cover = { at_ms, hold_ms, method: face|fallback|none, badness, faces, reason?, warning? } | null; con intel.platform_format_profiles.video_bookend_ms > 0, un fotograma del propio video (ojos abiertos y boca en reposo, MediaPipe face_landmarker) va fijo hold_ms al inicio y al final y es el poster_url; el audio se corre hold_ms; si falla, COVER_FALLBACK y el video sale sin portada",
     "required": [
       "url",
@@ -200,6 +201,7 @@
     "presets_table": "public.videolab_text_presets (brand_id NULL = sistema; la fila de la marca manda)",
     "sound": "v1.9.0: text_layers.sound = { preset_key, platform?, enabled? }; presets en public.videolab_sound_presets; sonidos de VoiceLab modo sound (voicelab_sound_library); salida text_layout.sound; aviso SOUND_FALLBACK",
     "depth": "v1.11.0: spec.depth = { mode: behind_subject, max_cover (0-1, por defecto 0.35) } en estilos html de hook, key_title y cta; recorte de personas MediaPipe (Apache-2.0) en el render; control de legibilidad: sobre el tope o sin recorte, el bloque va delante (TEXT_BEHIND_FALLBACK, TEXT_DEPTH_FALLBACK); salida text_layout.depth",
+    "sound_policy": "v1.15.0: public.videolab_sound_policy (brand_id, bed_tiers_allowed); con política, suggested.sound_bed sólo rota fondos cuyo sonido tiene voicelab_sound_library.tier admitido; sin política, todos; spec.bed.fade_out_ms (dato del preset) funde la salida de la cama",
     "sound_families": "v1.10.0: text_layers.sound = { platform?, enabled?, bed?: { preset_key, sound_key?, enabled?, level_lu? (-6..6) }, effects?: { preset_key, enabled?, gain_db? (-12..6), sounds_by_fn?: { block_entry|word_pop|cta|impact|digit_land|shot_cut: sound_key|null } } }; familia en videolab_sound_presets.kind (bed|effects|mixed); librería: VoiceLab GET /api/sound-library; rotación del fondo: /api/text-styles suggested.sound_bed",
     "seed": "docs/text_presets_seed.json",
     "role_max_entry_ms": 350,

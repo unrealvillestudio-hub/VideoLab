@@ -25,7 +25,7 @@ import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline
 import { X264, HOST } from './x264.mjs';
 import { createHash } from 'node:crypto';
 import { resolveSound, mixSound, measureLoudness, soundRequestOf } from './soundmix.mjs';
-import { applyBookend, bookendMsOf } from './html/cover.mjs';
+import { applyBookend, bookendMsOf, hookWindowOf } from './html/cover.mjs';
 export { soundRequestOf };
 
 const run = promisify(execFile);
@@ -164,19 +164,20 @@ async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline,
  * Sin el dato, todo como antes: póster en `fallbackAtS`. Deja `poster` (JPG) en `work` y devuelve { cover, probe, bytes,
  * durationS } del MP4 final (ya validado). Si la portada falla, el video sale sin ella y lo avisa (`COVER_FALLBACK`).
  */
-async function finishWithCover({ profile, outPath, work, canvas, durationS, fallbackAtS }) {
+async function finishWithCover({ profile, outPath, work, canvas, durationS, fallbackAtS, blocks = null }) {
   const holdMs = bookendMsOf(profile);
   const poster = join(work, 'poster.jpg');
   let cover = null;
   if (holdMs > 0) {
     try {
       const withCover = join(work, 'con_portada.mp4');
-      const c = await applyBookend({ video: outPath, out: withCover, work, holdMs, durationS, fallbackAtS, run });
+      // «Portada con hook» (Sam, 2026-11-19): si hay gancho, el fotograma sale de su tramo.
+      const c = await applyBookend({ video: outPath, out: withCover, work, holdMs, durationS, fallbackAtS, run, window: hookWindowOf(blocks) });
       const fallas = validateOutput(await ffprobe(withCover), canvas, statSync(withCover).size);
       if (fallas.length) throw new Error(fallas.join('; '));
       copyFileSync(withCover, outPath);
       await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', c.still, '-q:v', '3', poster]);
-      cover = { at_ms: c.at_ms, hold_ms: c.hold_ms, method: c.method, badness: c.badness, faces: c.faces, reason: c.reason };
+      cover = { at_ms: c.at_ms, hold_ms: c.hold_ms, method: c.method, window: c.window, badness: c.badness, faces: c.faces, reason: c.reason };
     } catch (e) {
       cover = { hold_ms: 0, method: 'none', warning: `COVER_FALLBACK: la portada no se pudo poner (${String(e?.message ?? e).slice(0, 160)}); el video sale sin ella` };
     }
@@ -223,7 +224,7 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
   const fallas = validateOutput(probe, canvas, bytes);
   if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
   const fin = await finishWithCover({ profile, outPath, work, canvas, durationS: Number(probe.format.duration),
-    fallbackAtS: Math.min(1.5, Number(probe.format.duration) / 2) });
+    fallbackAtS: Math.min(1.5, Number(probe.format.duration) / 2), blocks: tlr.blocks });
   const { poster, durationS } = fin;
   if (fin.cover?.warning) drawn.warnings.push(fin.cover.warning);
   const base = `videolab/${brandId}/${pieceId ?? 'sin-pieza'}/${jobId}`;
@@ -588,7 +589,7 @@ export async function renderJob(jobId, env = process.env) {
     const fallas = validateOutput(probe, canvas, bytes);
     if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
     const fin = await finishWithCover({ profile, outPath, work, canvas, durationS: Number(probe.format.duration),
-      fallbackAtS: margins?.posterAtS ?? Math.min(1.5, durationS / 2) });
+      fallbackAtS: margins?.posterAtS ?? Math.min(1.5, durationS / 2), blocks: tlr?.blocks ?? null });
     const { poster } = fin;
 
     const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');

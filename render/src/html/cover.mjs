@@ -37,10 +37,28 @@ export function bookendMsOf(profile) {
 }
 
 /**
- * Los momentos candidatos (ms): cada `stepMs` desde `edgeMs` hasta `durationMs - edgeMs`, con a lo sumo `max` (si hay
- * más, se agranda el paso). Sin margen suficiente, el centro. PURO.
+ * La ventana del gancho (decisión de Sam, 2026-11-19: «Portada con hook»): del 40 % de su tramo —ya entró— hasta 100 ms
+ * antes de que salga. `blocks` = la geometría de las capas (`text_layout.blocks`). Sin gancho → null. PURO.
  */
-export function coverCandidates(durationMs, { stepMs = CANDIDATE_STEP_MS, edgeMs = 500, max = 120 } = {}) {
+export function hookWindowOf(blocks) {
+  const h = (blocks ?? []).find((b) => b?.layer === 'hook' && Number.isFinite(b.start_ms) && Number.isFinite(b.end_ms));
+  if (!h || !(h.end_ms > h.start_ms)) return null;
+  return { from: Math.round(h.start_ms + (h.end_ms - h.start_ms) * 0.4), to: h.end_ms - 100 };
+}
+
+/**
+ * Los momentos candidatos (ms), alineados a `stepMs`: dentro de `window` ({ from, to }) si viene y cabe al menos un paso;
+ * si no, desde `edgeMs` hasta `durationMs - edgeMs`. A lo sumo `max` (si hay más, se agranda el paso). Sin margen
+ * suficiente, el centro. PURO.
+ */
+export function coverCandidates(durationMs, { stepMs = CANDIDATE_STEP_MS, edgeMs = 500, max = 120, window = null } = {}) {
+  const inWin = window && Number.isFinite(window.from) && Number.isFinite(window.to)
+    ? [Math.max(0, Math.ceil(window.from / stepMs) * stepMs), Math.min(durationMs, window.to)] : null;
+  if (inWin && inWin[1] >= inWin[0]) {
+    const out = [];
+    for (let t = inWin[0]; t <= inWin[1] && out.length < max; t += stepMs) out.push(t);
+    return out;
+  }
   const from = edgeMs, to = durationMs - edgeMs;
   if (!(to > from)) return [Math.max(0, Math.round(durationMs / 2))];
   const step = Math.max(stepMs, Math.ceil((to - from) / Math.max(1, max - 1) / stepMs) * stepMs);
@@ -169,16 +187,18 @@ export async function scanFaces({ input, candidates, browserPath = findHeadlessS
  * y deja el resultado en `out`. Devuelve { still (PNG), at_ms, method: 'face' | 'fallback', badness, faces, reason }.
  * `fallbackAtS`: el fotograma de siempre (reposo del avatar o 1,5 s). `run`: execFile prometido.
  */
-export async function applyBookend({ video, out, work, holdMs, durationS, fallbackAtS, run, fps = 30, scan = scanFaces }) {
+export async function applyBookend({ video, out, work, holdMs, durationS, fallbackAtS, run, fps = 30, scan = scanFaces, window = null }) {
   const durationMs = Math.round(durationS * 1000);
   let pick = null, reason = null;
   try {
-    pick = pickCover(await scan({ input: video, candidates: coverCandidates(durationMs) }));
+    pick = pickCover(await scan({ input: video, candidates: coverCandidates(durationMs, { window }) }));
     if (!pick) reason = 'ningún candidato con cara';
   } catch (e) { reason = String(e?.message ?? e).slice(0, 160); }
-  const atMs = pick ? pick.t_ms : Math.round(fallbackAtS * 1000);
+  // Sin cara elegible: con gancho, el momento en que ya entró (la portada lleva el gancho); sin gancho, el de siempre.
+  const atMs = pick ? pick.t_ms : window ? coverCandidates(durationMs, { window })[0] : Math.round(fallbackAtS * 1000);
   const still = join(work, 'portada.png');
   await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(atMs / 1000), '-i', video, '-frames:v', '1', still]);
   await run('ffmpeg', bookendArgs({ video, still, holdMs, out, fps, durationS }), { maxBuffer: 1 << 26 });
-  return { still, at_ms: atMs, hold_ms: holdMs, method: pick ? 'face' : 'fallback', badness: pick?.badness ?? null, faces: pick?.faces ?? 0, reason };
+  return { still, at_ms: atMs, hold_ms: holdMs, method: pick ? 'face' : 'fallback', badness: pick?.badness ?? null, faces: pick?.faces ?? 0, reason,
+    window: window ? 'hook' : 'video' };
 }

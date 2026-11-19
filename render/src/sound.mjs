@@ -94,7 +94,11 @@ export function soundMixArgs({ video, durationS, preset, cues, files, out, gains
     args.push('-stream_loop', '-1', '-i', bed);
     const ratio = Math.max(1, Math.round(num(preset.bed.duck_db, 8) / 1.5));
     f.push(`[0:a]${fmt},volume=${gains?.voice_db ?? 0}dB,asplit=2[voz][sc]`);
-    f.push(`[${idx}:a]${fmt},atrim=0:${durationS},volume=${gains?.bed_db ?? num(preset.bed.gain_db, -26)}dB[cama0]`);
+    // Fundido de salida de la cama (2026-11-19, pistas producidas largas): `bed.fade_out_ms` es dato del preset; sin él o
+    // en 0, la cama se corta como antes (los presets existentes dan el mismo MP4).
+    const fadeS = Math.max(0, num(preset.bed.fade_out_ms, 0)) / 1000;
+    const fade = fadeS > 0 ? `,afade=t=out:st=${Math.max(0, durationS - fadeS)}:d=${Math.min(fadeS, durationS)}` : '';
+    f.push(`[${idx}:a]${fmt},atrim=0:${durationS}${fade},volume=${gains?.bed_db ?? num(preset.bed.gain_db, -26)}dB[cama0]`);
     f.push(`[cama0][sc]sidechaincompress=threshold=0.02:ratio=${ratio}:attack=30:release=${num(preset.bed.release_ms, 500)}[cama]`);
     idx++;
   } else f.push(`[0:a]${fmt},volume=${gains?.voice_db ?? 0}dB[voz]`);
