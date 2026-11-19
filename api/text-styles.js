@@ -27,10 +27,19 @@ export function bedHistoryOf(rows) {
 /** La sugerencia de fondo; null si la lectura falla (el texto no depende del sonido). */
 async function soundBedSuggestion(cfg, brandId) {
   try {
-    const rows = await S.select(cfg, `videolab_sound_presets?kind=eq.bed&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=preset_key,kind,brand_id,active,status,sort`);
+    const rows = await S.select(cfg, `videolab_sound_presets?kind=eq.bed&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=preset_key,kind,brand_id,active,status,sort,spec`);
+    // Política sonora de la marca y nivel de cada sonido (2026-11-19). La fila de la marca del sonido manda sobre la de sistema.
+    // Código primero, dato después: si la tabla o la columna aún no existen, se rota como antes (sin política).
+    let policy = null, lib = [];
+    try {
+      [policy] = await S.select(cfg, `videolab_sound_policy?brand_id=eq.${enc(brandId)}&select=bed_tiers_allowed`);
+      const keys = [...new Set(rows.map((r) => r.spec?.bed?.sound).filter(Boolean))];
+      if (policy && keys.length) lib = await S.select(cfg, `voicelab_sound_library?sound_key=in.(${keys.map(enc).join(',')})&active=is.true&or=(brand_id.is.null,brand_id.eq.${enc(brandId)})&select=sound_key,brand_id,tier`);
+    } catch { policy = null; lib = []; }
+    const tierOf = (k) => (lib.find((x) => x.sound_key === k && x.brand_id === brandId) ?? lib.find((x) => x.sound_key === k))?.tier ?? null;
     const jobs = await S.select(cfg, `lab_jobs?lab=eq.videolab&brand_id=eq.${enc(brandId)}&status=eq.completed&payload->>pieceId=not.is.null` +
       `&output_parsed->text_layout->sound->bed=not.is.null&order=completed_at.desc&limit=${HISTORY_LIMIT}&select=bed:output_parsed->text_layout->sound->bed->>preset_key`);
-    return suggestSoundBed(rows, brandId, bedHistoryOf(jobs));
+    return suggestSoundBed(rows, brandId, bedHistoryOf(jobs), { policy: policy ?? null, tierOf });
   } catch {
     return null;
   }

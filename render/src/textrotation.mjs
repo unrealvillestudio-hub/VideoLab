@@ -64,10 +64,15 @@ function leastRecent(pool, lastSeen) {
  * SONIDO DE FONDO (sonido F2, 2026-11-17). Decisión de Sam: «sonido de fondo entra en la rotación, efectos de sonido van
  * de acuerdo a la necesidad». El grupo son los presets de fondo (`kind = 'bed'` en `videolab_sound_presets`) que ve la
  * marca, validados si los hay; si no, todos los activos. `history` = presets de fondo usados por la marca, del job más
- * reciente al más antiguo (`lab_jobs.output_parsed.text_layout.sound.bed.preset_key`). Misma regla que el texto. PURO.
+ * reciente al más antiguo (`lab_jobs.output_parsed.text_layout.sound.bed.preset_key`). Misma regla que el texto.
+ * `policy` = fila de `videolab_sound_policy` de la marca (o null); `tierOf(sound_key)` = nivel del sonido. PURO.
  */
-export function suggestSoundBed(rows, brandId, history) {
-  const beds = visiblePresets(rows, brandId).filter((r) => r.kind === 'bed');
+export function suggestSoundBed(rows, brandId, history, { policy = null, tierOf = null } = {}) {
+  // Política sonora de la marca (2026-11-19, `videolab_sound_policy`): si la marca la tiene, sólo rotan los fondos cuyo
+  // sonido es de un nivel admitido (`voicelab_sound_library.tier`). Sin política, todos, como antes.
+  const allowed = Array.isArray(policy?.bed_tiers_allowed) && policy.bed_tiers_allowed.length ? new Set(policy.bed_tiers_allowed) : null;
+  const beds = visiblePresets(rows, brandId).filter((r) => r.kind === 'bed')
+    .filter((r) => !allowed || allowed.has(tierOf?.(r.spec?.bed?.sound) ?? null));
   const validated = beds.filter((r) => String(r.status ?? '').startsWith('validated'));
   return leastRecent(validated.length ? validated : beds, lastSeenOf(history));
 }
