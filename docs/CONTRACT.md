@@ -538,7 +538,7 @@ En `completed`, `lab_jobs.output_parsed`:
 
 ```
 {
-  video: { url, storage_path, poster_url, width, height, fps, duration_ms, codec, audio },
+  video: { url, storage_path, poster_url, width, height, fps, duration_ms, codec, audio, cover },   // cover: v1.14.0
   video_style, producer, provider, model_id, synthetic_person: boolean,
   preset_source: 'brand' | 'system',          // de qué fila salió el preset
   avatar_direction: { expressiveness, picked: [id] } | null,   // acciones del catálogo usadas (productor avatar)
@@ -565,7 +565,22 @@ bajada el primer `subheadline` de `on_screen_text`; un `cta` hoy no tiene ranura
 | Audio | AAC 48 kHz estéreo, voz + música mezcladas dentro del archivo |
 | Duración | máximo 60 s |
 | Tamaño | máximo 50 MB (límite del bucket) |
-| Portada | JPG del mismo lienzo, en `poster_url` |
+| Portada | JPG del mismo lienzo, en `poster_url`; desde v1.14.0, el fotograma de la portada dentro del video |
+
+**Portada dentro del video (v1.14.0, decisión de Sam 2026-11-19).** «Los thumbnails solo duran milisegundos para que antes
+de que corra el video se proyecte la imagen estática correcta (no con la boca abierta o los ojos cerrados), deberá elegirlos
+del mismo video. propongo 250ms», en todos los estilos. Con `intel.platform_format_profiles.video_bookend_ms` > 0 (dato del
+formato; NULL o 0 = sin portada), el render:
+- mira el video terminado cada 250 ms (lejos de los bordes, a lo sumo 120 momentos) con el detector de puntos de la cara
+  de MediaPipe (`face_landmarker`, Apache-2.0, fijado por sha256) y elige el momento cuya **peor** cara tenga menos
+  `max(parpadeo) + boca abierta`; empate → el más temprano;
+- pone ese fotograma fijo `video_bookend_ms` al inicio y al final, corre la voz y el audio ese tiempo y lo usa como `poster_url`;
+- sin caras en el video (p. ej. un producto) o sin detector, usa el fotograma de siempre (`method: 'fallback'`);
+- si el montaje falla (p. ej. pasaría de 60 s), el video sale sin portada y `video.cover.warning` dice
+  `COVER_FALLBACK`; en el modo `text_layers` el aviso va también a `text_layout.warnings`.
+
+La salida dice `video.cover = { at_ms, hold_ms, method, badness, faces, reason? }`. `duration_ms` incluye la portada; el
+`timeline` y `clean_video` siguen siendo los del video limpio, sin portada (un re-render de texto parte de ahí y la vuelve a poner).
 
 **Dónde queda:** bucket `unrlvl-media`, ruta `videolab/<brandId>/<pieceId>/<job_id>.mp4` (portada `.jpg` al lado).
 El carril guarda el resultado en `content_pieces.assets.video` y el estilo en `assets.format.video_style`.
@@ -609,6 +624,8 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.14.0 (2026-11-19)** — Portada dentro del video (§5): fotograma del propio video con ojos abiertos y boca en
+  reposo, fijo `video_bookend_ms` (dato del formato) al inicio y al final, y póster; `video.cover`; aviso `COVER_FALLBACK`.
 - **v1.13.0 (2026-11-18)** — Zona segura del operador por pieza: `text_layers.safe_override`, aviso
   `TEXT_SAFE_ZONE_OVERRIDDEN` y `scene.safe_brand` (§4 ter.4). Encargo de Sam, pasado por la sesión B del Orchestrator.
 - **v1.12.0, corrección (2026-11-18)** — `max_cps` se mide por frase, no por grupo. Con la voz real de prueba, el aviso

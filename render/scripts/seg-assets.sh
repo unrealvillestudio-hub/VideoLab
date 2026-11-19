@@ -3,6 +3,7 @@
 # Uso: sh render/scripts/seg-assets.sh <carpeta>   (la imagen del render lo corre con /opt/vl-seg)
 #   - @mediapipe/tasks-vision 1.2.3 (Apache-2.0): el segmentador en WASM (vision_bundle.mjs y wasm/).
 #   - selfie_multiclass_256x256, versión 1 (Apache-2.0): el modelo de personas por clases.
+#   - face_landmarker, float16 versión 1 (Apache-2.0): puntos y gestos de la cara, para elegir la portada (2026-11-19).
 # Un archivo que no coincide con su huella detiene el build: el recorte sólo corre con lo que se midió.
 set -eu
 DEST="${1:?falta la carpeta de destino}"
@@ -15,4 +16,6 @@ cp "$TMP/package/vision_bundle.mjs" "$DEST/"
 cp "$TMP/package/wasm/vision_wasm_internal.js" "$TMP/package/wasm/vision_wasm_internal.wasm" "$DEST/wasm/"
 curl -fsSL -o "$DEST/selfie_multiclass_256x256.tflite" https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/1/selfie_multiclass_256x256.tflite
 echo "c6748b1253a99067ef71f7e26ca71096cd449baefa8f101900ea23016507e0e0  $DEST/selfie_multiclass_256x256.tflite" | sha256sum -c -
+curl -fsSL -o "$DEST/face_landmarker.task" https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
+echo "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff  $DEST/face_landmarker.task" | sha256sum -c -
 rm -rf "$TMP"

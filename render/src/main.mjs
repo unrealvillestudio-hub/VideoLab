@@ -25,6 +25,7 @@ import { validateTextLayers, timelineWords, textLayersArgs, conversationTimeline
 import { X264, HOST } from './x264.mjs';
 import { createHash } from 'node:crypto';
 import { resolveSound, mixSound, measureLoudness, soundRequestOf } from './soundmix.mjs';
+import { applyBookend, bookendMsOf } from './html/cover.mjs';
 export { soundRequestOf };
 
 const run = promisify(execFile);
@@ -158,6 +159,36 @@ async function soundLayer({ cfg, jobId, brandId, sound, platform, tlr, timeline,
 }
 
 /**
+ * PORTADA DENTRO DEL VIDEO (contrato v1.14.0): con `video_bookend_ms` del perfil (dato), el fotograma elegido (caras con
+ * ojos abiertos y boca en reposo, `render/src/html/cover.mjs`) va fijo ese tiempo al inicio y al final, y es el póster.
+ * Sin el dato, todo como antes: póster en `fallbackAtS`. Deja `poster` (JPG) en `work` y devuelve { cover, probe, bytes,
+ * durationS } del MP4 final (ya validado). Si la portada falla, el video sale sin ella y lo avisa (`COVER_FALLBACK`).
+ */
+async function finishWithCover({ profile, outPath, work, canvas, durationS, fallbackAtS }) {
+  const holdMs = bookendMsOf(profile);
+  const poster = join(work, 'poster.jpg');
+  let cover = null;
+  if (holdMs > 0) {
+    try {
+      const withCover = join(work, 'con_portada.mp4');
+      const c = await applyBookend({ video: outPath, out: withCover, work, holdMs, durationS, fallbackAtS, run });
+      const fallas = validateOutput(await ffprobe(withCover), canvas, statSync(withCover).size);
+      if (fallas.length) throw new Error(fallas.join('; '));
+      copyFileSync(withCover, outPath);
+      await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', c.still, '-q:v', '3', poster]);
+      cover = { at_ms: c.at_ms, hold_ms: c.hold_ms, method: c.method, badness: c.badness, faces: c.faces, reason: c.reason };
+    } catch (e) {
+      cover = { hold_ms: 0, method: 'none', warning: `COVER_FALLBACK: la portada no se pudo poner (${String(e?.message ?? e).slice(0, 160)}); el video sale sin ella` };
+    }
+  }
+  if (!cover || cover.method === 'none') {
+    await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(fallbackAtS), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
+  }
+  const probe = await ffprobe(outPath);
+  return { cover, poster, probe, bytes: statSync(outPath).size, durationS: Number(probe.format.duration) };
+}
+
+/**
  * Modo `text_layers` (contrato v1.3.0, §4 ter.1): SÓLO texto sobre el video limpio de la pieza. No llama a HeyGen, Veo
  * ni ImageLab. Baja `previousOutputs.base_video`, dibuja las capas, valida con ffprobe, sube MP4 y portada con el mismo
  * esquema de rutas y asienta el costo del render.
@@ -191,18 +222,19 @@ async function textLayersJob({ cfg, jobId, brandId, params, prev, pieceId, work,
   const probe = await ffprobe(outPath);
   const fallas = validateOutput(probe, canvas, bytes);
   if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
-  const durationS = Number(probe.format.duration);
-  const poster = join(work, 'poster.jpg');
-  await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(Math.min(1.5, durationS / 2)), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
+  const fin = await finishWithCover({ profile, outPath, work, canvas, durationS: Number(probe.format.duration),
+    fallbackAtS: Math.min(1.5, Number(probe.format.duration) / 2) });
+  const { poster, durationS } = fin;
+  if (fin.cover?.warning) drawn.warnings.push(fin.cover.warning);
   const base = `videolab/${brandId}/${pieceId ?? 'sin-pieza'}/${jobId}`;
   const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');
   const posterUrl = await S.upload(cfg, `${base}.jpg`, readFileSync(poster), 'image/jpeg');
   const { cost, ledgerId } = await logRenderCost(cfg, { brandId, jobId, pieceId, platform: params.platform, rate, t0, durationS });
-  const v = probe.streams.find((x) => x.codec_type === 'video');
+  const v = fin.probe.streams.find((x) => x.codec_type === 'video');
   return {
     mode: 'text_layers',
     video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
-      duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes },
+      duration_ms: Math.round(durationS * 1000), codec: 'h264', audio: true, bytes: fin.bytes, cover: fin.cover },
     clean_video: { url: prev.base_video.url },
     text_layers: prev.text_layers,
     text_layout: { ...textLayout(tlr, drawn), ...(snd ? { sound: snd.sound } : {}) },
@@ -555,8 +587,9 @@ export async function renderJob(jobId, env = process.env) {
     const probe = await ffprobe(outPath);
     const fallas = validateOutput(probe, canvas, bytes);
     if (fallas.length) throw new RenderError('VIDEOLAB_OUTPUT_INVALID', fallas.join('; '));
-    const poster = join(work, 'poster.jpg');
-    await run('ffmpeg', ['-loglevel', 'error', '-y', '-ss', String(margins?.posterAtS ?? Math.min(1.5, durationS / 2)), '-i', outPath, '-frames:v', '1', '-q:v', '3', poster]);
+    const fin = await finishWithCover({ profile, outPath, work, canvas, durationS: Number(probe.format.duration),
+      fallbackAtS: margins?.posterAtS ?? Math.min(1.5, durationS / 2) });
+    const { poster } = fin;
 
     const url = await S.upload(cfg, `${base}.mp4`, readFileSync(outPath), 'video/mp4');
     const posterUrl = await S.upload(cfg, `${base}.jpg`, readFileSync(poster), 'image/jpeg');
@@ -577,10 +610,10 @@ export async function renderJob(jobId, env = process.env) {
       }));
     }
 
-    const v = probe.streams.find((s) => s.codec_type === 'video');
+    const v = fin.probe.streams.find((s) => s.codec_type === 'video');
     const output = {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
-        duration_ms: Math.round(Number(probe.format.duration) * 1000), codec: 'h264', audio: true, bytes },
+        duration_ms: Math.round(fin.durationS * 1000), codec: 'h264', audio: true, bytes: fin.bytes, cover: fin.cover },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
       conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, synthetic_speakers: pod.plan.synthetic_speakers ?? [], segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,

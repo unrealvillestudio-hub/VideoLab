@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -85,6 +85,7 @@
   ],
   "output": {
     "field": "lab_jobs.output_parsed.video",
+    "cover": "v1.14.0: video.cover = { at_ms, hold_ms, method: face|fallback|none, badness, faces, reason?, warning? } | null; con intel.platform_format_profiles.video_bookend_ms > 0, un fotograma del propio video (ojos abiertos y boca en reposo, MediaPipe face_landmarker) va fijo hold_ms al inicio y al final y es el poster_url; el audio se corre hold_ms; si falla, COVER_FALLBACK y el video sale sin portada",
     "required": [
       "url",
       "storage_path",
@@ -248,7 +249,8 @@
       "TEXT_PLACED_OVER_FACE",
       "TEXT_PLACED_OVERLAP",
       "TEXT_CAPTION_FAST",
-      "TEXT_SAFE_ZONE_OVERRIDDEN"
+      "TEXT_SAFE_ZONE_OVERRIDDEN",
+      "COVER_FALLBACK"
     ],
     "preview": {
       "endpoint": "POST /api/text-scene",
