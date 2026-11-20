@@ -249,3 +249,65 @@ export function speakersNeedingConsent(speakers, people) {
     synthetic: speakers.filter((pid) => byId.get(pid).person_kind === 'synthetic'),
   };
 }
+
+// ─────────────────────────────────────── cortes en paralelo y caché de clips (v1.16.0) ───────────────────────────────────────
+// 2026-11-19, job cf23e27a (10 cortes): los clips de HeyGen se pedían uno detrás de otro (45–60 s cada uno), el render llegó
+// al tope de 840 s y HeyGen cobró los 10 clips sin que quedara asiento, porque el costo se escribía al final. Ahora:
+//   - los cortes se fabrican en paralelo, hasta `videolab_producers.max_parallel_clips` (dato; sin él, CLIP_PARALLEL_DEFAULT);
+//   - cada clip pagado se asienta en cuanto llega, aunque el job falle después;
+//   - cada clip se guarda en una caché direccionada por contenido: un reintento con la misma voz, la misma toma, el mismo
+//     motor y la misma dirección lo reutiliza sin volver a pagar.
+
+/** Llamadas simultáneas a HeyGen cuando el productor no lo declara. */
+export const CLIP_PARALLEL_DEFAULT = 4;
+/** Tope duro: nunca más de esto a la vez, aunque el dato diga otra cosa. */
+export const CLIP_PARALLEL_MAX = 8;
+/** Versión de la clave de caché: si cambia lo que define un clip, se sube y la caché vieja deja de coincidir. */
+export const CLIP_CACHE_VERSION = 1;
+
+/** Cuántos cortes a la vez, del dato del productor, acotado a [1, CLIP_PARALLEL_MAX]. PURO. */
+export function clipParallelOf(prod) {
+  const n = Math.round(Number(prod?.max_parallel_clips));
+  return Number.isFinite(n) && n >= 1 ? Math.min(CLIP_PARALLEL_MAX, n) : CLIP_PARALLEL_DEFAULT;
+}
+
+/** JSON con claves ordenadas: la misma dirección escrita en otro orden da la misma clave. PURO. */
+export function stableJson(v) {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`;
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stableJson(v[k])}`).join(',')}}`;
+  return JSON.stringify(v ?? null);
+}
+
+/**
+ * Lo que define un clip animado: motor, imagen de la toma, dirección del avatar y el tramo de voz (huella del audio
+ * completo del turno + milisegundos de inicio y fin; no los bytes del MP3 recortado, que dependen del codificador). Dos
+ * cortes con lo mismo producen el mismo clip, así que comparten clave. `sha256` se inyecta (node:crypto). PURO.
+ */
+export function clipCacheKey({ engine, imageUrl, direction, turnAudioSha256, fromMs, toMs }, sha256) {
+  if (!str(engine?.rateModelId) || !str(imageUrl) || !/^[0-9a-f]{64}$/.test(String(turnAudioSha256))
+    || !(Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs > fromMs)) bad('clave de caché de clip incompleta');
+  return sha256(stableJson({ v: CLIP_CACHE_VERSION, engine: engine.rateModelId, image_url: imageUrl, direction: direction ?? {},
+    audio: { turn_sha256: turnAudioSha256, from_ms: Math.round(fromMs), to_ms: Math.round(toMs) } }));
+}
+
+/** Ruta de la caché de clips en el bucket. Común a todas las marcas: la clave ya separa contenido distinto. PURO. */
+export const clipCachePath = (key) => `videolab/cache/clips/${key}.mp4`;
+
+/**
+ * Corre `fn(item, index)` sobre todos los elementos con a lo sumo `limit` a la vez; devuelve los resultados en el orden de
+ * entrada. Ante el primer error deja de lanzar nuevos y lo propaga cuando terminan los que ya estaban en curso.
+ */
+export async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  let failed = null;
+  const worker = async () => {
+    while (failed == null && next < items.length) {
+      const i = next++;
+      try { out[i] = await fn(items[i], i); } catch (e) { failed ??= e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  if (failed != null) throw failed;
+  return out;
+}

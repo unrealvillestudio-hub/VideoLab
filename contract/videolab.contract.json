@@ -1,6 +1,6 @@
 {
   "_doc": "Contrato de VideoLab, forma legible por máquina. La explicación vive en docs/CONTRACT.md; el test tests/contrato_test.mjs comprueba que los dos dicen lo mismo y que aquí no aparece ninguna marca ni persona (test de la marca N+1).",
-  "version": "1.15.0",
+  "version": "1.16.0",
   "date": "2026-11-17",
   "lab": "videolab",
   "transport": {
@@ -137,10 +137,12 @@
       "Cada turno necesita al menos un corte animado.",
       "Motores por imagen: avatar_iv (por defecto o motion.avatar.engine), heygen-avatar-6, heygen-avatar-6-turbo.",
       "Cada persona que habla necesita consentimiento vigente de avatar.",
-      "Un asiento en ops_generation_ledger por cada llamada a HeyGen, con la tarifa de su motor.",
+      "Un asiento en ops_generation_ledger por cada llamada a HeyGen, con la tarifa de su motor, escrito en cuanto llega el clip (v1.16.0): un job que falla después no deja gasto sin asentar.",
+      "v1.16.0: los cortes se fabrican en paralelo, hasta videolab_producers.max_parallel_clips (dato; sin él, 4; nunca más de 8).",
+      "v1.16.0: caché de clips direccionada por contenido (motor, imagen de la toma, motion.avatar del preset y el tramo de voz: sha256 del audio del turno + inicio y fin en ms) en videolab/cache/clips/<clave>.mp4: un reintento con lo mismo reutiliza el clip sin pagar ni asentar.",
       "Con technique_id, los cortes siguen cut_plan.sequence (roles speaker | listener | wide, con framing preferido) y moves.speaker mueve la cámara de quien habla."
     ],
-    "output": "output_parsed.conversation = { location_blueprint_id, technique_id, segments: [{ turn, seat, shot_id, mode, start_ms, ms, engine }] }"
+    "output": "output_parsed.conversation = { location_blueprint_id, technique_id, segments: [{ turn, seat, shot_id, mode, start_ms, ms, engine }], clips: { generated, reused } }"
   },
   "text_layers": {
     "mode": "params.mode = 'text_layers' — sólo texto sobre previousOutputs.base_video; no llama a HeyGen, Veo ni ImageLab",

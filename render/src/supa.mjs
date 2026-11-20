@@ -93,6 +93,15 @@ export async function rpc(cfg, fn, args) {
   return res.json();
 }
 
+/** Lee un objeto del bucket con la llave de servicio; si no existe, null. Se usa para la caché de clips. */
+export async function readObject(cfg, path) {
+  const res = await fetchNamed(`STORAGE GET ${path}`, `${cfg.url}/storage/v1/object/authenticated/${cfg.bucket}/${path}`,
+    { headers: headers(cfg) }, { retry: true });
+  if (res.status === 404 || res.status === 400) return null;
+  await check(res, `STORAGE GET ${path}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 /** Sube un archivo al bucket (sobrescribe) y devuelve su URL pública. */
 export async function upload(cfg, path, bytes, contentType) {
   // Con x-upsert la subida se puede repetir: el mismo archivo en la misma ruta.
