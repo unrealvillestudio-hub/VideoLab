@@ -143,7 +143,14 @@ POST /api/execute
   (NULL) la sigue necesitando. Quien habla y no está en `person_blueprints` → `VIDEOLAB_BAD_REQUEST`. La salida dice
   `conversation.synthetic_speakers`.
 - **Costo:** el tope del productor `avatar` se comprueba con la suma de todos los cortes animados antes de llamar; cada
-  llamada a HeyGen asienta su fila.
+  llamada a HeyGen asienta su fila **en cuanto llega el clip** (v1.16.0), así que un job que falla después no deja gasto
+  sin asentar.
+- **Cortes en paralelo y caché de clips (v1.16.0, 2026-11-20).** Medido el 2026-11-19 (job `cf23e27a`, 10 cortes): los
+  clips se pedían uno detrás de otro, el render llegó a `VIDEOLAB_TIMEOUT` y HeyGen ya había cobrado los 10. Ahora los
+  cortes se fabrican en paralelo, hasta `videolab_producers.max_parallel_clips` (dato; sin él, 4; nunca más de 8). Cada
+  clip animado se guarda en `videolab/cache/clips/<clave>.mp4`, con la clave = sha256 de motor, imagen de la toma,
+  `motion.avatar` del preset y el tramo de voz (sha256 del audio del turno + inicio y fin en ms): un reintento con lo mismo lo reutiliza sin pagar ni asentar.
+  La salida dice `conversation.clips = { generated, reused }`.
 - **Técnicas de escena (v1.2.0).** `params.technique_id` nombra una técnica de `public.videolab_scene_techniques`
   (validada por Sam en `skills/audiovisual-techniques`). Con ella, un turno **puede llegar sin cortes**: VideoLab los
   arma recorriendo `cut_plan.sequence` (roles de cámara relativos a quien habla: `speaker`, `listener`, `wide`, cada uno
@@ -633,6 +640,8 @@ Sin tarifa vigente, el job falla antes de llamar al proveedor. El tope mensual p
 
 ## 10. Registro de cambios
 
+- **v1.16.0 (2026-11-20)** — Conversación: cortes en paralelo (`videolab_producers.max_parallel_clips`), asiento de cada
+  clip de HeyGen al llegar y caché de clips por contenido (§4 bis, `conversation.clips`).
 - **v1.15.0 (2026-11-19)** — Fondos por marca y portada con gancho: política sonora (`videolab_sound_policy`, §4 ter.7),
   `spec.bed.fade_out_ms`, y la portada buscada en el tramo del gancho (§5, `video.cover.window`).
 - **v1.14.0 (2026-11-19)** — Portada dentro del video (§5): fotograma del propio video con ojos abiertos y boca en

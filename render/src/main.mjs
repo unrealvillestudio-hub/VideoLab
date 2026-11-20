@@ -15,7 +15,8 @@ import { planRender, resolvePreset, resolveCanvas, overlayTextFrom, validateOutp
 import { planAssemble, buildAss, clipsNeeded, sourceImages, composeAvatarDirection, avatarMargins, avatarSubject } from './assemble.mjs';
 import { veoClip } from './providers/veo.mjs';
 import { heygenClip, heygenLook, heygenImageClip } from './providers/heygen.mjs';
-import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs, facesOnCanvas } from './conversation.mjs';
+import { planConversation, speakersNeedingConsent, catalogById, animatedSecondsByRate, stillArgs, clipArgs, facesOnCanvas,
+  clipParallelOf, clipCacheKey, clipCachePath, mapLimit } from './conversation.mjs';
 import { brandFont } from './fonts.mjs';
 import { prepareTextLayers } from './textprep.mjs';
 import { renderHtmlLayers } from './html/capture.mjs';
@@ -458,6 +459,9 @@ export async function renderJob(jobId, env = process.env) {
     let durationS;
     let cleanVideo = null;
     const providerRows = [];
+    // Clips de conversación ya asentados uno a uno al llegar (v1.16.0): aquí sólo se suman al total y a ledger_ids.
+    const clipCosts = [];
+    let clipStats = null;
     if (isConversation) {
       // El tope del productor, con lo que va a cobrar cada motor.
       const secs = animatedSecondsByRate(pod.plan.segments);
@@ -470,38 +474,67 @@ export async function renderJob(jobId, env = process.env) {
       }
       const direction = preset.motion?.avatar ?? {};
       const turnAudio = [];
+      const turnSha = [];
       for (const [ti, t] of prev.turns.entries()) {
         const p = join(work, `turn${ti}.audio`);
-        writeFileSync(p, await S.download(t.voice.audio_url, `voz del turno ${ti}`));
+        const bytes = await S.download(t.voice.audio_url, `voz del turno ${ti}`);
+        writeFileSync(p, bytes);
         turnAudio.push(p);
+        turnSha.push(createHash('sha256').update(bytes).digest('hex'));
       }
-      const parts = [];
+      // Los cortes en paralelo (v1.16.0): hasta `max_parallel_clips` del productor a la vez. Cada clip animado se busca
+      // primero en la caché de clips (misma voz, toma, motor y dirección → mismo clip, sin volver a pagar); si no está, se
+      // pide a HeyGen, se guarda en la caché y su costo se asienta EN ESE MOMENTO, aunque el job falle después.
       const shotFile = new Map();
-      for (const [si, seg] of pod.plan.segments.entries()) {
+      for (const seg of pod.plan.segments) {
+        if (seg.mode === 'animate' || shotFile.has(seg.image_url)) continue;
+        const img = join(work, `shot${shotFile.size}`);
+        writeFileSync(img, await S.download(seg.image_url, `toma ${seg.shot_id}`));
+        shotFile.set(seg.image_url, img);
+      }
+      const sha256 = (b) => createHash('sha256').update(b).digest('hex');
+      clipStats = { generated: 0, reused: 0 };
+      const parts = await mapLimit(pod.plan.segments, clipParallelOf(prod), async (seg, si) => {
         const seconds = (seg.to_ms - seg.from_ms) / 1000;
         const out = join(work, `seg${si}.mp4`);
-        if (seg.mode === 'animate') {
-          // El tramo de voz de este corte, subido para que HeyGen lo lea.
-          const cut = join(work, `seg${si}.mp3`);
-          await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', turnAudio[seg.turn], '-ss', (seg.from_ms / 1000).toFixed(3), '-to', (seg.to_ms / 1000).toFixed(3), '-ar', '44100', '-b:a', '160k', cut]);
-          const audioUrl = await S.upload(cfg, `${base}/seg${si}.mp3`, readFileSync(cut), 'audio/mpeg');
-          const hg = await heygenImageClip({ engine: seg.engine, imageUrl: seg.image_url, audioUrl, title: `videolab ${jobId} ${si}`, direction });
-          const clip = join(work, `seg${si}_hg.mp4`);
-          writeFileSync(clip, hg.bytes);
-          const hgS = Math.round(Number((await ffprobe(clip)).format?.duration ?? seconds) * 10) / 10;
-          providerRows.push({ model: { provider: 'heygen', model_id: seg.engine.rateModelId }, rate: pod.rates[seg.engine.rateModelId], seconds: hgS });
-          await run('ffmpeg', ['-loglevel', 'error', ...clipArgs({ clip, seconds, canvas, focusX: seg.focus_x, move: seg.move, out })]);
-        } else {
-          if (!shotFile.has(seg.image_url)) {
-            const img = join(work, `shot${shotFile.size}`);
-            writeFileSync(img, await S.download(seg.image_url, `toma ${seg.shot_id}`));
-            shotFile.set(seg.image_url, img);
-          }
+        if (seg.mode !== 'animate') {
           await run('ffmpeg', ['-loglevel', 'error', ...stillArgs({ image: shotFile.get(seg.image_url), seconds, canvas, focusX: seg.focus_x,
             zoomPerFrame: Number(preset.motion?.conversation?.still_zoom_per_frame ?? 0.0006), out })]);
+          return out;
         }
-        parts.push(out);
-      }
+        // El tramo de voz de este corte.
+        const cut = join(work, `seg${si}.mp3`);
+        await run('ffmpeg', ['-loglevel', 'error', '-y', '-i', turnAudio[seg.turn], '-ss', (seg.from_ms / 1000).toFixed(3), '-to', (seg.to_ms / 1000).toFixed(3), '-ar', '44100', '-b:a', '160k', cut]);
+        const cutBytes = readFileSync(cut);
+        const key = clipCacheKey({ engine: seg.engine, imageUrl: seg.image_url, direction, turnAudioSha256: turnSha[seg.turn],
+          fromMs: seg.from_ms, toMs: seg.to_ms }, sha256);
+        const clip = join(work, `seg${si}_hg.mp4`);
+        const cached = await S.readObject(cfg, clipCachePath(key));
+        if (cached) {
+          writeFileSync(clip, cached);
+          clipStats.reused += 1;
+        } else {
+          const audioUrl = await S.upload(cfg, `${base}/seg${si}.mp3`, cutBytes, 'audio/mpeg');
+          const hg = await heygenImageClip({ engine: seg.engine, imageUrl: seg.image_url, audioUrl, title: `videolab ${jobId} ${si}`, direction });
+          writeFileSync(clip, hg.bytes);
+          const hgS = Math.round(Number((await ffprobe(clip)).format?.duration ?? seconds) * 10) / 10;
+          clipStats.generated += 1;
+          // Asiento inmediato del clip pagado.
+          const rate = pod.rates[seg.engine.rateModelId];
+          const c = Math.round(hgS * Number(rate.rate_usd) * 1e6) / 1e6;
+          clipCosts.push({ cost: c, ledgerId: await S.rpc(cfg, 'ops_log_generation', {
+            p_lab: LAB, p_brand_id: brandId, p_job_id: jobId, p_piece_id: pieceId, p_output_type: `video_${producer}`,
+            p_platform: params.platform, p_provider: 'heygen', p_model_id: seg.engine.rateModelId, p_unit_type: 'per_second',
+            p_input_units: hgS, p_output_units: pod.plan.totalMs / 1000, p_cost_usd: c, p_status: 'success',
+            p_rate_in: rate.rate_usd, p_rate_source: `ops_lab_rates:${rate.rate_id}`, p_rate_effective_at: rate.effective_from,
+            p_source_app: 'videolab-render', p_billable: 'refacturable', p_modo_cobro: 'estandar',
+          }) });
+          // A la caché, para que un reintento no vuelva a pagarlo. Si la subida falla, el clip ya está asentado y se usa igual.
+          await S.upload(cfg, clipCachePath(key), hg.bytes, 'video/mp4').catch(() => {});
+        }
+        await run('ffmpeg', ['-loglevel', 'error', ...clipArgs({ clip, seconds, canvas, focusX: seg.focus_x, move: seg.move, out })]);
+        return out;
+      });
       // Montaje: los cortes en orden, la voz de los turnos seguida, y la capa de texto encima si la hay.
       const list = join(work, 'parts.txt');
       writeFileSync(list, parts.map((x) => `file '${x}'`).join('\n'));
@@ -597,8 +630,8 @@ export async function renderJob(jobId, env = process.env) {
 
     // Costo: segundos de cómputo del job a la tarifa vigente (por ops_log_generation, ver logRenderCost).
     const { cost, ledgerId } = await logRenderCost(cfg, { brandId, jobId, pieceId, platform: params.platform, rate, t0, durationS });
-    const ledgerIds = [ledgerId];
-    let totalCost = cost;
+    const ledgerIds = [ledgerId, ...clipCosts.map((x) => x.ledgerId)];
+    let totalCost = cost + clipCosts.reduce((a, x) => a + x.cost, 0);
     for (const r of providerRows) {
       const c = Math.round(r.seconds * Number(r.rate.rate_usd) * 1e6) / 1e6;
       totalCost += c;
@@ -616,7 +649,7 @@ export async function renderJob(jobId, env = process.env) {
       video: { url, storage_path: `${base}.mp4`, poster_url: posterUrl, width: v.width, height: v.height, fps: SPEC.fps,
         duration_ms: Math.round(fin.durationS * 1000), codec: 'h264', audio: true, bytes: fin.bytes, cover: fin.cover },
       video_style: params.video_style, producer, provider: model?.provider ?? 'unrlvl', model_id: model?.model_id ?? RATE_MODEL,
-      conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, synthetic_speakers: pod.plan.synthetic_speakers ?? [], segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })) } : null,
+      conversation: pod ? { location_blueprint_id: params.location_blueprint_id, technique_id: pod.plan.technique_id, synthetic_speakers: pod.plan.synthetic_speakers ?? [], segments: pod.plan.segments.map((g) => ({ turn: g.turn, seat: g.seat, shot_id: g.shot_id, mode: g.mode, start_ms: g.start_ms, ms: g.to_ms - g.from_ms, engine: g.mode === 'animate' ? g.engine.engine : null })), clips: clipStats } : null,
       preset_source: preset.source, synthetic_person: producer === 'avatar' ? !personId : false,
       avatar_direction: avatarDirection ? { expressiveness: avatarDirection.expressiveness ?? null, picked: avatarDirection.picked } : null,
       avatar_subject: subject ? { mode: subject.mode, engine: subject.engine, look_id: subject.lookId, avatar_type: subject.avatarType } : null,
